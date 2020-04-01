@@ -3,16 +3,11 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 13:05:08 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 13:07:09 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
 DEFAULT_INTERVAL=2 # seconds
-
-#
-# User/Group map files
-#
-DEFAULT_GROUP_MAP=.nfsd.group
 
 #
 # Network IP map file
@@ -21,7 +16,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.5 $'
+VERSION='$Version: 0.1.6 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -34,7 +29,6 @@ FAILURE=1
 #
 # Command-line options
 #
-GROUP_MAP="$DEFAULT_GROUP_MAP"		# -P file
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
 IP_MAP="$DEFAULT_IP_MAP"		# -I file
 NO_NAMES=				# -n
@@ -89,8 +83,6 @@ usage()
 	printf "$optfmt" "-j" "Output JSON formatted data."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
-	printf "$optfmt" "-P file" \
-		"Group map file. Default \`$DEFAULT_GROUP_MAP'."
 	printf "$optfmt" "-r" "Raw view. Do not format output of bpftrace."
 	printf "$optfmt" "-S ip" "Server filtter (IPv4 only)."
 	printf "$optfmt" "-s" "View read/write activity by server IP."
@@ -161,7 +153,7 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts chi:JjN:nP:rsuvw flag; do
+while getopts chi:JjN:nrsuvw flag; do
 	case "$flag" in
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
@@ -170,7 +162,6 @@ while getopts chi:JjN:nP:rsuvw flag; do
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
 	n) NO_NAMES=1 ;;
-	P) GROUP_MAP="$OPTARG" ;;
 	r) RAW_VIEW=1 ;;
 	s) VIEW=SERVER VIEW_SERVER=1 ;;
 	u) VIEW=USER VIEW_USER=1 ;;
@@ -256,7 +247,6 @@ fi
 #
 run_beegfs_ctl | awk \
 	-v cols=$cols \
-	-v group_map="$GROUP_MAP" \
 	-v interval=$INTERVAL_SECONDS \
 	-v ip_map="$IP_MAP" \
 	-v no_names=${NO_NAMES:-0} \
@@ -365,13 +355,6 @@ run_beegfs_ctl | awk \
 
 	function load_files()
 	{
-		delete gid2name
-		while (getline < group_map > 0) {
-			n = split($0, fields, /:/)
-			gid2name[fields[3]] = fields[1]
-		}
-		close(group_map)
-
 		delete ip2name
 		while (getline < ip_map > 0) {
 			if (/^[[:space:]]*(#|$)/) continue
@@ -579,9 +562,6 @@ run_beegfs_ctl | awk \
 				if (curview == "client") {
 					if (cred in ip2name)
 						cred = ip2name[cred]
-				} else if (curview == "group") {
-					if (cred in gid2name)
-						cred = gid2name[cred]
 				} else if (curview == "server") {
 					if (cred in ip2name)
 						cred = ip2name[cred]
