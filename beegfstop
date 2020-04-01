@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:44:26 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:46:43 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.3.1 $'
+VERSION='$Version: 0.3.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -233,7 +233,6 @@ run_beegfs_ctl | awk \
 	function clear_data()
 	{
 		delete client_keys
-		delete file_keys
 		delete group_keys
 		delete server_keys
 		delete user_keys
@@ -281,8 +280,6 @@ run_beegfs_ctl | awk \
 		delete _keys
 		if (map_view == "client") for (map_key in client_keys)
 			_keys[map_key] = client_keys[map_key]
-		else if (map_view == "file") for (map_key in file_keys)
-			_keys[map_key] = file_keys[map_key]
 		else if (map_view == "group") for (map_key in group_keys)
 			_keys[map_key] = group_keys[map_key]
 		else if (map_view == "server") for (map_key in server_keys)
@@ -311,7 +308,6 @@ run_beegfs_ctl | awk \
 			view_list[++nviews] = map_view
 		}
 		if (map_view == "client") client_keys[map_key]
-		else if (map_view == "file") file_keys[map_key]
 		else if (map_view == "group") group_keys[map_key]
 		else if (map_view == "server") server_keys[map_key]
 		else if (map_view == "user") user_keys[map_key]
