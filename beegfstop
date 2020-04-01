@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:24:25 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:26:58 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2.4 $'
+VERSION='$Version: 0.2.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -127,16 +127,14 @@ shift $(( $OPTIND - 1 ))
 [ $# -eq 0 ] || usage "Too many arguments" # NOTREACHED
 
 #
-# Silently ignore previous view options unless JSON output
+# Silently ignore previous view options
 #
 [ "$VIEW" ] || VIEW=USER VIEW_USER=1
-if [ ! "$OUTPUT_JSON" ]; then
-	case "$VIEW" in
-	CLIENT) VIEW_SERVER= VIEW_USER= ;;
-	SERVER) VIEW_CLIENT= VIEW_USER= ;;
-	USER) VIEW_CLIENT= VIEW_SERVER= ;;
-	esac
-fi
+case "$VIEW" in
+CLIENT) VIEW_SERVER= VIEW_USER= ;;
+SERVER) VIEW_CLIENT= VIEW_USER= ;;
+USER) VIEW_CLIENT= VIEW_SERVER= ;;
+esac
 
 #
 # Validate `-i sec' option
