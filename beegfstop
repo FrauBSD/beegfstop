@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:37:14 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:39:56 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.0.5 $'
+VERSION='$Version: 0.0.6 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -47,7 +47,6 @@ OUTPUT_JSON=				# -j
 PASSWD_MAP="$DEFAULT_PASSWD_MAP"	# -p file
 RAW_VIEW=				# -r
 VIEW_CLIENT=				# -c
-VIEW_GROUP=				# -g
 VIEW_SERVER=				# -s
 VIEW_USER=				# -u (default)
 WIDE_VIEW=				# -w
@@ -89,7 +88,6 @@ usage()
 	printf "Options:\n"
 	printf "$optfmt" "-C ip" "Client filter (IPv4 only)."
 	printf "$optfmt" "-c" "View read/write activity by client IP."
-	printf "$optfmt" "-g" "View read/write activity by group."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-I file" "IP map file. Default \`$DEFAULT_IP_MAP'."
 	printf "$optfmt" "-i sec" \
@@ -166,14 +164,13 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts C:cghi:JjN:nP:p:rS:sU:uvw flag; do
+while getopts C:chi:JjN:nP:p:rS:sU:uvw flag; do
 	case "$flag" in
 	C) FILTER_CLIENT="$OPTARG" ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
-	g) VIEW=GROUP VIEW_GROUP=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	J) OUTPUT_JSON=1 \
-		VIEW_CLIENT=1 VIEW_GROUP=1 VIEW_SERVER=1 VIEW_USER=1 ;;
+		VIEW_CLIENT=1 VIEW_SERVER=1 VIEW_USER=1 ;;
 	j) OUTPUT_JSON=1 ;;
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
@@ -205,10 +202,9 @@ shift $(( $OPTIND - 1 ))
 [ "$VIEW" ] || VIEW=USER VIEW_USER=1
 if [ ! "$OUTPUT_JSON" ]; then
 	case "$VIEW" in
-	CLIENT) VIEW_GROUP= VIEW_SERVER= VIEW_USER= ;;
-	GROUP) VIEW_CLIENT= VIEW_SERVER= VIEW_USER= ;;
-	SERVER) VIEW_CLIENT= VIEW_GROUP= VIEW_USER= ;;
-	USER) VIEW_CLIENT= VIEW_GROUP= VIEW_SERVER= ;;
+	CLIENT) VIEW_SERVER= VIEW_USER= ;;
+	SERVER) VIEW_CLIENT= VIEW_USER= ;;
+	USER) VIEW_CLIENT= VIEW_SERVER= ;;
 	esac
 fi
 
