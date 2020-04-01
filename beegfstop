@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:26:42 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:32:10 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.0.2 $'
+VERSION='$Version: 0.0.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -36,7 +36,6 @@ FAILURE=1
 # Command-line options
 #
 FILTER_CLIENT=				# -C ip
-FILTER_FILE=				# -F regex
 FILTER_GROUP=				# -G group
 FILTER_SERVER=				# -S ip
 FILTER_USER=				# -U user
@@ -93,7 +92,6 @@ usage()
 	printf "Options:\n"
 	printf "$optfmt" "-C ip" "Client filter (IPv4 only)."
 	printf "$optfmt" "-c" "View read/write activity by client IP."
-	printf "$optfmt" "-F regex" "File filter. Implies \`-f'."
 	printf "$optfmt" "-f" \
 		"View read/write activity by file. Implies \`-w'."
 	printf "$optfmt" "-G group" "Group filter (name or id)."
@@ -174,11 +172,10 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts C:cF:fG:ghi:JjN:nP:p:rS:sU:uvw flag; do
+while getopts C:cfG:ghi:JjN:nP:p:rS:sU:uvw flag; do
 	case "$flag" in
 	C) FILTER_CLIENT="$OPTARG" ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
-	F) VIEW=FILE VIEW_FILE=1 WIDE_VIEW=1 FILTER_FILE="$OPTARG" ;;
 	f) VIEW=FILE VIEW_FILE=1 WIDE_VIEW=1 ;;
 	G) FILTER_GROUP="$OPTARG" ;;
 	g) VIEW=GROUP VIEW_GROUP=1 ;;
@@ -438,7 +435,6 @@ fi
 #
 # Trace nfsd I/O
 #
-export FILTER_FILE
 run_bpftrace /dev/stdin | awk \
 	-v cols=$cols \
 	-v group_map="$GROUP_MAP" \
@@ -455,7 +451,6 @@ run_bpftrace /dev/stdin | awk \
 	'####################################### BEGIN
 
 	BEGIN {
-		filter_file = ENVIRON["FILTER_FILE"]
 		samples_left = nsamples
 		waiting = "Waiting for bpftrace to initialize ..."
 
@@ -604,7 +599,6 @@ run_bpftrace /dev/stdin | awk \
 		if (map_view == "user" || map_view == "group") {
 			map_key = int(map_key)
 		} else if (map_view == "file") {
-			if (filter_file != "" && cred !~ filter_file) return 0
 			gsub(/, /, "/", map_key)
 			gsub("//+", "/", map_key)
 		}
