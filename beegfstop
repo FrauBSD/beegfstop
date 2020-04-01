@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:53:37 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:57:45 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.1 $'
+VERSION='$Version: 0.1.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -35,7 +35,6 @@ FAILURE=1
 #
 # Command-line options
 #
-FILTER_CLIENT=				# -C ip
 FILTER_USER=				# -U user
 GROUP_MAP="$DEFAULT_GROUP_MAP"		# -P file
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
@@ -53,7 +52,6 @@ WIDE_VIEW=				# -w
 #
 # Miscellaneous
 #
-_FILTER_CLIENT=
 _FILTER_USER=
 INTERVAL_PROBE= # Calculated
 INTERVAL_SECONDS= # Raw value for awk
@@ -169,9 +167,8 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts C:chi:JjN:nP:p:rsU:uvw flag; do
+while getopts chi:JjN:nP:p:rsU:uvw flag; do
 	case "$flag" in
-	C) FILTER_CLIENT="$OPTARG" ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	J) OUTPUT_JSON=1 VIEW_CLIENT=1 VIEW_SERVER=1 VIEW_USER=1 ;;
@@ -245,51 +242,6 @@ esac
 case "$NSAMPLES" in
 0) die "-i sec must be non-zero" ;;
 *[!0-9]*) die "-i argument must be a positive integer" ;;
-esac
-
-#
-# Process `-C ip' option
-#
-case "$FILTER_CLIENT" in
-"") : ok ;;
-*[a-zA-Z]*)
-	_FILTER_CLIENT=$( awk \
-		-v sq="'" \
-		-v ip_map="$IP_MAP" \
-		-v host="$FILTER_CLIENT" \
-	'BEGIN {
-		delete host2ip
-		while (getline < ip_map > 0) {
-			if (/^[[:space:]]*(#|$)/) continue
-			n = split($0, fields, /[[:space:]]+/)
-			host2ip[fields[2]] = fields[1]
-		}
-		close(ip_map)
-		if (host in host2ip) {
-			print host2ip[host]
-			exit 0
-		} else if (host !~ /\.$/ && (host ".") in host2ip) {
-			print host2ip[host "."]
-			exit 0
-		}
-		gsub(sq, "&\\\\&&", host)
-		cmd = sprintf("host -t A %s%s%s", sq, host, sq)
-		cmd | getline
-		close(cmd)
-		if ($NF !~ /NXDOMAIN/) {
-			print $NF
-			exit 0
-		}
-		exit 1
-	}' 2> /dev/null ) || die "Unknown host %s" "$FILTER_CLIENT"
-	FILTER_CLIENT="$_FILTER_CLIENT"
-	checkip "$FILTER_CLIENT" # NOTREACHED if non-ip
-	atoi $FILTER_CLIENT FILTER_CLIENT
-	;;
-*)
-	checkip "$FILTER_CLIENT" # NOTREACHED if non-ip
-	atoi $FILTER_CLIENT FILTER_CLIENT
-	;;
 esac
 
 #
