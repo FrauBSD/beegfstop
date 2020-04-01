@@ -1,9 +1,9 @@
 #!/bin/sh
 ############################################################ IDENT(1)
 #
-# $Title: Script to generate top-like statistics for nfsd I/O $
+# $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:15:46 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:20:19 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
