@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:34:52 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:37:14 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.0.4 $'
+VERSION='$Version: 0.0.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -36,7 +36,6 @@ FAILURE=1
 # Command-line options
 #
 FILTER_CLIENT=				# -C ip
-FILTER_GROUP=				# -G group
 FILTER_SERVER=				# -S ip
 FILTER_USER=				# -U user
 GROUP_MAP="$DEFAULT_GROUP_MAP"		# -P file
@@ -57,7 +56,6 @@ WIDE_VIEW=				# -w
 # Miscellaneous
 #
 _FILTER_CLIENT=
-_FILTER_GROUP=
 _FILTER_SERVER=
 _FILTER_USER=
 INTERVAL_PROBE= # Calculated
@@ -91,7 +89,6 @@ usage()
 	printf "Options:\n"
 	printf "$optfmt" "-C ip" "Client filter (IPv4 only)."
 	printf "$optfmt" "-c" "View read/write activity by client IP."
-	printf "$optfmt" "-G group" "Group filter (name or id)."
 	printf "$optfmt" "-g" "View read/write activity by group."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-I file" "IP map file. Default \`$DEFAULT_IP_MAP'."
@@ -169,11 +166,10 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts C:cG:ghi:JjN:nP:p:rS:sU:uvw flag; do
+while getopts C:cghi:JjN:nP:p:rS:sU:uvw flag; do
 	case "$flag" in
 	C) FILTER_CLIENT="$OPTARG" ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
-	G) FILTER_GROUP="$OPTARG" ;;
 	g) VIEW=GROUP VIEW_GROUP=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	J) OUTPUT_JSON=1 \
@@ -294,41 +290,6 @@ case "$FILTER_CLIENT" in
 *)
 	checkip "$FILTER_CLIENT" # NOTREACHED if non-ip
 	atoi $FILTER_CLIENT FILTER_CLIENT
-	;;
-esac
-
-#
-# Process `-G group' option
-#
-case "$FILTER_GROUP" in
-"") : ok ;;
-*[!0-9]*) # name
-	_FILTER_GROUP=$( awk \
-		-v sq="'" \
-		-v group_map="$GROUP_MAP" \
-		-v name="$FILTER_GROUP" \
-	'BEGIN {
-		delete name2gid
-		while (getline < group_map > 0) {
-			n = split($0, fields, /:/)
-			name2gid[fields[1]] = fields[3]
-		}
-		close(group_map)
-		if (name in name2gid) {
-			print name2gid[name]
-			exit 0
-		}
-		gsub(sq, "&\\\\&&", name)
-		cmd = sprintf("getent group %s%s%s", sq, name, sq)
-		cmd | getline group
-		close(cmd)
-		if (split(group, fields, /:/) >= 3) {
-			print fields[3]
-			exit 0
-		}
-		exit 1
-	}' 2> /dev/null ) || die "Unknown group %s" "$FILTER_GROUP"
-	FILTER_GROUP="$_FILTER_GROUP"
 	;;
 esac
 
