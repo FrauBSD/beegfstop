@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:01:17 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:04:55 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.8 $'
+VERSION='$Version: 0.1.9 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -71,7 +71,6 @@ usage()
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default $DEFAULT_INTERVAL."
 	printf "$optfmt" "" "Accepts decimal point on seconds."
-	printf "$optfmt" "-J" "Output most JSON data. Same as \`-jcgsu'."
 	printf "$optfmt" "-j" "Output JSON formatted data."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
@@ -143,11 +142,10 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts chi:JjN:nrsuvw flag; do
+while getopts chi:jN:nrsuvw flag; do
 	case "$flag" in
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
-	J) OUTPUT_JSON=1 VIEW_CLIENT=1 VIEW_SERVER=1 VIEW_USER=1 ;;
 	j) OUTPUT_JSON=1 ;;
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
