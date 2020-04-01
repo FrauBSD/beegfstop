@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:39:56 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:41:20 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.0.6 $'
+VERSION='$Version: 0.0.7 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -169,8 +169,7 @@ while getopts C:chi:JjN:nP:p:rS:sU:uvw flag; do
 	C) FILTER_CLIENT="$OPTARG" ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
-	J) OUTPUT_JSON=1 \
-		VIEW_CLIENT=1 VIEW_SERVER=1 VIEW_USER=1 ;;
+	J) OUTPUT_JSON=1 VIEW_CLIENT=1 VIEW_SERVER=1 VIEW_USER=1 ;;
 	j) OUTPUT_JSON=1 ;;
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
@@ -385,7 +384,7 @@ if [ "$size" ]; then
 fi
 
 #
-# Trace nfsd I/O
+# Trace BeeGFS I/O
 #
 run_bpftrace /dev/stdin | awk \
 	-v cols=$cols \
