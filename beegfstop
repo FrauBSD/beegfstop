@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:26:58 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:30:14 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2.5 $'
+VERSION='$Version: 0.2.6 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -142,7 +142,7 @@ esac
 case "$INTERVAL" in
 "") usage "missing -i argument" ;; # NOTREACHED
 0) die "-i sec must be non-zero" ;;
-*[!0-9.]*|*.*.*|.) die "-i argument must be a number" ;;
+*[!0-9]*) die "-i argument must be a number" ;;
 *.*)
 	INTERVAL_SECONDS=$INTERVAL
 	ms=$( echo "$INTERVAL * 1000" | bc )
