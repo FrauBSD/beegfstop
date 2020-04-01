@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:07:41 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:12:45 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2 $'
+VERSION='$Version: 0.2.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -70,7 +70,6 @@ usage()
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default $DEFAULT_INTERVAL."
-	printf "$optfmt" "" "Accepts decimal point on seconds."
 	printf "$optfmt" "-j" "Output JSON formatted data."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
