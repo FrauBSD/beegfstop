@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:12:45 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:14:15 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2.1 $'
+VERSION='$Version: 0.2.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -74,7 +74,7 @@ usage()
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
 	printf "$optfmt" "-r" "Raw view. Do not format output of bpftrace."
-	printf "$optfmt" "-s" "View read/write activity by server IP."
+	printf "$optfmt" "-s" "View read/write activity by server."
 	printf "$optfmt" "-u" "View read/write activity by user (default)."
 	printf "$optfmt" "-v" "Print version and exit."
 	printf "$optfmt" "-w" "Wide view. Maximize width of first column."
