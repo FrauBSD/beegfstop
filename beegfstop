@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:58:46 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 13:01:36 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.3 $'
+VERSION='$Version: 0.1.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -35,7 +35,6 @@ FAILURE=1
 #
 # Command-line options
 #
-FILTER_USER=				# -U user
 GROUP_MAP="$DEFAULT_GROUP_MAP"		# -P file
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
 IP_MAP="$DEFAULT_IP_MAP"		# -I file
@@ -52,7 +51,6 @@ WIDE_VIEW=				# -w
 #
 # Miscellaneous
 #
-_FILTER_USER=
 INTERVAL_PROBE= # Calculated
 INTERVAL_SECONDS= # Raw value for awk
 VIEW=
@@ -167,7 +165,7 @@ atoi()
 #
 # Parse command-line options
 #
-while getopts chi:JjN:nP:p:rsU:uvw flag; do
+while getopts chi:JjN:nP:p:rsuvw flag; do
 	case "$flag" in
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
@@ -180,7 +178,6 @@ while getopts chi:JjN:nP:p:rsU:uvw flag; do
 	p) PASSWD_MAP="$OPTARG" ;;
 	r) RAW_VIEW=1 ;;
 	s) VIEW=SERVER VIEW_SERVER=1 ;;
-	U) FILTER_USER="$OPTARG" ;;
 	u) VIEW=USER VIEW_USER=1 ;;
 	v) VERSION="${VERSION#*: }"
 		echo "${VERSION% $}"
@@ -242,41 +239,6 @@ esac
 case "$NSAMPLES" in
 0) die "-i sec must be non-zero" ;;
 *[!0-9]*) die "-i argument must be a positive integer" ;;
-esac
-
-#
-# Process `-U user' option
-#
-case "$FILTER_USER" in
-"") : ok ;;
-*[!0-9]*) # name
-	_FILTER_USER=$( awk \
-		-v sq="'" \
-		-v user_map="$PASSWD_MAP" \
-		-v name="$FILTER_USER" \
-	'BEGIN {
-		delete uid2name
-		while (getline < user_map > 0) {
-			n = split($0, fields, /:/)
-			name2uid[fields[1]] = fields[3]
-		}
-		close(user_map)
-		if (name in name2uid) {
-			print name2uid[name]
-			exit 0
-		}
-		gsub(sq, "&\\\\&&", name)
-		cmd = sprintf("getent passwd %s%s%s", sq, name, sq)
-		cmd | getline passwd
-		close(cmd)
-		if (split(passwd, fields, /:/) >= 3) {
-			print fields[3]
-			exit 0
-		}
-		exit 1
-	}' ) || die "Unknown user %s" "$FILTER_USER"
-	FILTER_USER="$_FILTER_USER"
-	;;
 esac
 
 #
