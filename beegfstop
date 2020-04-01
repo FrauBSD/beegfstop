@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:14:15 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:21:38 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2.2 $'
+VERSION='$Version: 0.2.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -84,6 +84,8 @@ usage()
 
 run_beegfs_ctl()
 {
+	set -- --nodetype=storage --interval=$INTERVAL "$@"
+	[ "$NO_NAMES" ] || set -- --names "$@"
 	if [ "$VIEW_CLIENT" ]; then
 		set -- --clientstats --rwunit=B "$@"
 	elif [ "$VIEW_SERVER" ]; then
@@ -91,7 +93,7 @@ run_beegfs_ctl()
 	elif [ "$VIEW_USER" ]; then
 		set -- --userstats --rwunit=B "$@"
 	fi
-	exec beegfs-ctl "$@" --names --nodetype=storage --interval=$INTERVAL
+	exec beegfs-ctl "$@"
 }
 
 isint()
