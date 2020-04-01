@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:32:37 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:34:20 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.2.8 $'
+VERSION='$Version: 0.2.9 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -37,7 +37,6 @@ WIDE_VIEW=				# -w
 #
 # Miscellaneous
 #
-INTERVAL_SECONDS= # Raw value for awk
 VIEW=
 
 ############################################################ FUNCTIONS
@@ -142,8 +141,6 @@ case "$INTERVAL" in
 "") usage "missing -i argument" ;; # NOTREACHED
 0) die "-i sec must be non-zero" ;;
 *[!0-9]*) die "-i argument must be a number" ;;
-*)
-	INTERVAL_SECONDS=$INTERVAL
 esac
 
 #
@@ -174,7 +171,7 @@ fi
 #
 run_beegfs_ctl | awk \
 	-v cols=$cols \
-	-v interval=$INTERVAL_SECONDS \
+	-v interval=$INTERVAL \
 	-v no_names=${NO_NAMES:-0} \
 	-v nsamples=${NSAMPLES:-0} \
 	-v output_json=${OUTPUT_JSON:-0} \
