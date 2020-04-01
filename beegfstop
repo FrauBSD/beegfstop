@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:41:20 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:42:46 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.0.7 $'
+VERSION='$Version: 0.0.8 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -112,9 +112,9 @@ usage()
 	die
 }
 
-run_bpftrace()
+run_beegfs_ctl()
 {
-	exec bpftrace "$@"
+	: exec bpftrace "$@"
 }
 
 isint()
@@ -386,7 +386,7 @@ fi
 #
 # Trace BeeGFS I/O
 #
-run_bpftrace /dev/stdin | awk \
+run_beegfs_ctl | awk \
 	-v cols=$cols \
 	-v group_map="$GROUP_MAP" \
 	-v interval=$INTERVAL_SECONDS \
