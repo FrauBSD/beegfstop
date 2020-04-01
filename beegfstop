@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:04:55 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:07:41 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.9 $'
+VERSION='$Version: 0.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -66,7 +66,7 @@ usage()
 
 	printf "Usage: %s [OPTIONS]\n" "$pgm"
 	printf "Options:\n"
-	printf "$optfmt" "-c" "View read/write activity by client IP."
+	printf "$optfmt" "-c" "View read/write activity by client."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default $DEFAULT_INTERVAL."
