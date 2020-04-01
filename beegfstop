@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:57:45 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 12:58:46 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -22,7 +22,7 @@ DEFAULT_IP_MAP=.nfsd.hosts
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.1.2 $'
+VERSION='$Version: 0.1.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -100,7 +100,7 @@ usage()
 	printf "$optfmt" "-r" "Raw view. Do not format output of bpftrace."
 	printf "$optfmt" "-S ip" "Server filtter (IPv4 only)."
 	printf "$optfmt" "-s" "View read/write activity by server IP."
-	printf "$optfmt" "-U group" "User filter (name or id)."
+	printf "$optfmt" "-U user" "User filter (name or id)."
 	printf "$optfmt" "-u" "View read/write activity by user (default)."
 	printf "$optfmt" "-v" "Print version and exit."
 	printf "$optfmt" "-w" "Wide view. Maximize width of first column."
@@ -245,7 +245,7 @@ case "$NSAMPLES" in
 esac
 
 #
-# Process `-U group' option
+# Process `-U user' option
 #
 case "$FILTER_USER" in
 "") : ok ;;
