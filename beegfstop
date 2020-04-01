@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:54:41 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 16:56:19 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.3.5 $'
+VERSION='$Version: 0.3.6 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -221,7 +221,6 @@ run_beegfs_ctl | awk \
 			clear_buffer()
 			buffer_add_header()
 			if (!output_json) print_buffer()
-			if (!no_names) load_files()
 		}
 	}
 
@@ -268,10 +267,6 @@ run_beegfs_ctl | awk \
 		buffer_add(sprintf("\033[7;1m" fmt "\033[27;22m", view,
 			"TOTAL", "WRITE(IN)", bar_size, "", bar_size, "",
 			"READ(OUT)"))
-	}
-
-	function load_files()
-	{
 	}
 
 	function load_keys(map_view,        map_key)
