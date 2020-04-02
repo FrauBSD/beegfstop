@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:26:34 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:34:00 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.9.8 $'
+VERSION='$Version: 0.9.9 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -158,7 +158,6 @@ esac
 # Validate `-N num' option
 #
 case "$NSAMPLES" in
-0) die "-N num must be non-zero" ;;
 *[!0-9]*) die "-N num must be a positive integer" ;;
 esac
 
@@ -183,7 +182,7 @@ fi
 run_beegfs_ctl | awk \
 	-v cols=$cols \
 	-v interval=$INTERVAL \
-	-v nsamples=${NSAMPLES:-0} \
+	-v nsamples=${NSAMPLES:--1} \
 	-v output_json=${OUTPUT_JSON:-0} \
 	-v raw_view=${RAW_VIEW:-0} \
 	-v rows=$rows \
@@ -192,7 +191,7 @@ run_beegfs_ctl | awk \
 	'####################################### BEGIN
 
 	BEGIN {
-		samples_left = nsamples
+		samples_left = ++nsamples
 		in_summary = 1
 
 		# Obtain awk pid
@@ -363,7 +362,7 @@ run_beegfs_ctl | awk \
 
 	function sample_check()
 	{
-		if (nsamples > 0 && samples_left-- < 1) {
+		if (nsamples > 0 && --samples_left < 1) {
 			system(sprintf("kill %d > /dev/null 2>&1", bpid))
 			exit
 		}
