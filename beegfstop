@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 09:43:02 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:22:37 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.7.4 $'
+VERSION='$Version: 0.7.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -247,9 +247,7 @@ run_beegfs_ctl | awk \
 
 	function clear_data()
 	{
-		delete client_keys
-		delete server_keys
-		delete user_keys
+		delete _keys
 
 		delete key_read
 		delete key_write
@@ -283,13 +281,6 @@ run_beegfs_ctl | awk \
 
 	function load_keys(        key)
 	{
-		delete _keys
-		if (view == "client") for (key in client_keys)
-			_keys[key] = client_keys[key]
-		else if (view == "server") for (key in server_keys)
-			_keys[key] = server_keys[key]
-		else if (view == "user") for (key in user_keys)
-			_keys[key] = user_keys[key]
 	}
 
 	function parse_line()
@@ -306,9 +297,7 @@ run_beegfs_ctl | awk \
 			key = int(key)
 		}
 
-		if (view == "client") client_keys[key]
-		else if (view == "server") server_keys[key]
-		else if (view == "user") user_keys[key]
+		_keys[key]
 
 		if (map_op == "rd") {
 			view_read[view] += map_value
