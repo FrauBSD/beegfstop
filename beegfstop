@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 17:06:17 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 19:45:17 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -91,7 +91,18 @@ run_beegfs_ctl()
 	elif [ "$VIEW_USER" ]; then
 		set -- --userstats --rwunit=B "$@"
 	fi
-	exec beegfs-ctl "$@"
+	expect -f- strace -e trace=poll beegfs-ctl "$@" <<-'END-EXPECT' | awk '
+		!/^(poll\(|\))/ { print; fflush(); next}
+		sub(/^poll\(.*fd=0.*/,"") { print; fflush() }
+	' # END-AWK
+		spawn {*}$argv
+		while (1) {
+			expect {
+				-re "fd=0" { send_user "\n" }
+				eof { exit 0 }
+			}
+		}
+	END-EXPECT
 }
 
 ############################################################ MAIN
@@ -194,6 +205,12 @@ run_beegfs_ctl | awk \
 		spid = st[4]
 
 		# Obtain beegfs-ctl pid
+		(cmd = sprintf("pgrep -P %d", spid)) | getline spid
+		close(cmd)
+		(cmd = sprintf("pgrep -P %d expect", spid)) | getline epid
+		close(cmd)
+		(cmd = sprintf("pgrep -P %d strace", epid)) | getline spid
+		close(cmd)
 		(cmd = sprintf("pgrep -P %d beegfs-ctl", spid)) | getline bpid
 		close(cmd)
 
@@ -374,6 +391,7 @@ run_beegfs_ctl | awk \
 			system(sprintf("kill %d > /dev/null 2>&1", bpid))
 			exit
 		}
+		seek_end = 0
 	}
 
 	function process_view(curview,
@@ -496,7 +514,10 @@ run_beegfs_ctl | awk \
 		print
 
 		# Exit if no more samples desired
-		if (/^===$/) sample_check()
+		if (/^===/ && !/= 0 s =/)
+			seek_end = 1
+		else if (seek_end && /^[[:space:]]*$/)
+			sample_check()
 
 		next
 	}
