@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:40:21 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:48:41 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.8 $'
+VERSION='$Version: 0.8.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -193,6 +193,7 @@ run_beegfs_ctl | awk \
 
 	BEGIN {
 		samples_left = nsamples
+		in_summary = 1
 
 		# Obtain awk pid
 		(cmd = "echo $PPID") | getline apid
@@ -366,6 +367,10 @@ run_beegfs_ctl | awk \
 		cred_write, write_bar, write_bar_pct, write_rate, write_total,
 		i, n, r, v, _keys_sorted, table_rows, cred)
 	{
+		if (output_json && in_summary) {
+			in_summary = 0
+			return
+		}
 		read_total = key_read["Sum:"]
 		read_rate = read_total / interval
 		write_total = key_write["Sum:"]
