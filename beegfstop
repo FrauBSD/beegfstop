@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 17:00:45 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-01 17:06:17 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.3.7 $'
+VERSION='$Version: 0.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -147,8 +147,8 @@ esac
 # Validate `-N num' option
 #
 case "$NSAMPLES" in
-0) die "-i sec must be non-zero" ;;
-*[!0-9]*) die "-i argument must be a positive integer" ;;
+0) die "-N num must be non-zero" ;;
+*[!0-9]*) die "-N num must be a positive integer" ;;
 esac
 
 #
@@ -496,7 +496,7 @@ run_beegfs_ctl | awk \
 		print
 
 		# Exit if no more samples desired
-		if (/^---$/) sample_check()
+		if (/^===$/) sample_check()
 
 		next
 	}
