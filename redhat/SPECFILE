@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 1.0
+Version: 1.0.1
 Release: 1
 Buildarch: noarch
 
@@ -77,5 +77,7 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Thu Apr  2 2020 Devin Teske <dteske@fraubsd.org> 1.0.1-1
+- 35d0d2b Fix handling of -n in server mode (-s)
 * Mon Mar 30 2020 Devin Teske <dteske@fraubsd.org> 1.0-1
 - Package created.
