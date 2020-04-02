@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:24:59 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:26:34 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.9.7 $'
+VERSION='$Version: 0.9.8 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -291,8 +291,16 @@ run_beegfs_ctl | awk \
 			key_read["Sum:"] += key_read[key] = read_bytes
 			key_write["Sum:"] += key_write[key] = write_bytes
 		} else {
-			key_read[key] = 0
-			key_write[key] = 0
+			delete _props
+			$0 = substr($0, length(key) + 1)
+			while (match($0, /^ *[^ ]+ \[[^\]]+\]/)) {
+				kprop = substr($2, 2, length($2) - 2)
+				value = $1
+				_props[kprop] = value
+				$0 = substr($0, RLENGTH + 1)
+			}
+			key_read[key] = read_bytes = int(_props["B-rd/s"])
+			key_write[key] = write_bytes = int(_props["B-wr/s"])
 		}
 
 		return 1
