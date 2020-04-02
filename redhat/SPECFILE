@@ -22,6 +22,8 @@ BuildRoot: %{_tmppath}/src
 Requires: /bin/awk
 Requires: /bin/sh
 Requires: beegfs-utils
+Requires: expect
+Requires: strace
 
 ############################################################ DESCRIPTION
 
