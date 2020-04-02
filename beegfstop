@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:30:30 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:38:22 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.7.8 $'
+VERSION='$Version: 0.7.9 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -290,9 +290,9 @@ run_beegfs_ctl | awk \
 		_keys[key]
 
 		if (map_op == "rd") {
-			key_read[view, key] = map_value
+			key_read[key] = map_value
 		} else { # wr
-			key_write[view, key] = map_value
+			key_write[key] = map_value
 		}
 
 		return 1
@@ -366,9 +366,9 @@ run_beegfs_ctl | awk \
 		cred_write, write_bar, write_bar_pct, write_rate, write_total,
 		i, n, r, v, _keys_sorted, table_rows, cred)
 	{
-		read_total = key_read[curview, "Sum:"]
+		read_total = key_read["Sum:"]
 		read_rate = read_total / interval
-		write_total = key_write[curview, "Sum:"]
+		write_total = key_write["Sum:"]
 		write_rate = write_total / interval
 
 		if (output_json) {
@@ -402,8 +402,7 @@ run_beegfs_ctl | awk \
 		# Decorate combined read/write values
 		#
 		for (cred in _keys) {
-			v = int(key_read[curview, cred]) + \
-				int(key_write[curview, cred])
+			v = int(key_read[cred]) + int(key_write[cred])
 			_keys[cred] = sprintf("%99d %s", v, cred)
 		}
 
@@ -417,8 +416,8 @@ run_beegfs_ctl | awk \
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
 
-			cred_read = key_read[curview, cred]
-			cred_write = key_write[curview, cred]
+			cred_read = key_read[cred]
+			cred_write = key_write[cred]
 
 			read_rate = cred_read / interval
 			if (read_total > 0)
