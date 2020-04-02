@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 13:46:21 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 13:48:49 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 1.0-beta-3 $'
+VERSION='$Version: 1.0-beta-4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -285,14 +285,12 @@ run_beegfs_ctl | awk \
 		}
 
 		key = (view == "SERVER") ? $NF : $1
-		_keys[key]
 
+		read_bytes = write_bytes = 0
 		if (view == "SERVER") {
 			# NB: KiB/s -> B/interval
 			read_bytes = $3 * 1024 * interval
 			write_bytes = $2 * 1024 * interval
-			key_read["Sum:"] += key_read[key] = read_bytes
-			key_write["Sum:"] += key_write[key] = write_bytes
 		} else {
 			delete _props
 			$0 = substr($0, length(key) + 1)
@@ -304,10 +302,16 @@ run_beegfs_ctl | awk \
 			}
 			read_bytes = int(_props["B-rd"])
 			write_bytes = int(_props["B-wr"])
-			if (read_bytes + write_bytes < 1) return 0
-			key_read[key] = read_bytes
-			key_write[key] = write_bytes
 		}
+		if (read_bytes + write_bytes < 1) return 0
+
+		_keys[key]
+		if (view == "SERVER") {
+			key_read["Sum:"] += read_bytes
+			key_write["Sum:"] += write_bytes
+		}
+		key_read[key] = read_bytes
+		key_write[key] = write_bytes
 
 		return 1
 	}
