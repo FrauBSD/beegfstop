@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:57:13 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 12:58:33 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 1.0-beta-1 $'
+VERSION='$Version: 1.0-beta-2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -85,11 +85,11 @@ run_beegfs_ctl()
 	set -- --nodetype=storage --interval=$INTERVAL "$@"
 	[ "$NO_NAMES" ] || set -- --names "$@"
 	if [ "$VIEW_CLIENT" ]; then
-		set -- --clientstats --rwunit=B "$@"
+		set -- --clientstats --rwunit=B --perinterval "$@"
 	elif [ "$VIEW_SERVER" ]; then
 		set -- --serverstats --perserver "$@"
 	elif [ "$VIEW_USER" ]; then
-		set -- --userstats --rwunit=B "$@"
+		set -- --userstats --rwunit=B --perinterval "$@"
 	fi
 	expect -f- strace -e trace=poll beegfs-ctl "$@" <<-'END-EXPECT' | awk '
 		!/^(poll\(|\))/ { print; fflush(); next}
@@ -298,8 +298,8 @@ run_beegfs_ctl | awk \
 				_props[kprop] = value
 				$0 = substr($0, RLENGTH + 1)
 			}
-			read_bytes = int(_props["B-rd/s"])
-			write_bytes = int(_props["B-wr/s"])
+			read_bytes = int(_props["B-rd"])
+			write_bytes = int(_props["B-wr"])
 			if (read_bytes + write_bytes < 1) return 0
 			key_read[key] = read_bytes
 			key_write[key] = write_bytes
