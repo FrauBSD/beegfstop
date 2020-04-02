@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:25:29 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 10:30:30 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.7.7 $'
+VERSION='$Version: 0.7.8 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -251,8 +251,6 @@ run_beegfs_ctl | awk \
 
 		delete key_read
 		delete key_write
-		delete view_read
-		delete view_write
 	}
 
 	function clear_buffer()
@@ -292,10 +290,8 @@ run_beegfs_ctl | awk \
 		_keys[key]
 
 		if (map_op == "rd") {
-			view_read[view] += map_value
 			key_read[view, key] = map_value
 		} else { # wr
-			view_write[view] += map_value
 			key_write[view, key] = map_value
 		}
 
@@ -370,9 +366,9 @@ run_beegfs_ctl | awk \
 		cred_write, write_bar, write_bar_pct, write_rate, write_total,
 		i, n, r, v, _keys_sorted, table_rows, cred)
 	{
-		read_total = view_read[curview]
+		read_total = key_read[curview, "Sum:"]
 		read_rate = read_total / interval
-		write_total = view_write[curview]
+		write_total = key_write[curview, "Sum:"]
 		write_rate = write_total / interval
 
 		if (output_json) {
