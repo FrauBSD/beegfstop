@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 09:38:29 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 09:43:02 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.7.3 $'
+VERSION='$Version: 0.7.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -251,10 +251,10 @@ run_beegfs_ctl | awk \
 		delete server_keys
 		delete user_keys
 
-		delete map_key_read
-		delete map_key_write
-		delete map_view_read
-		delete map_view_write
+		delete key_read
+		delete key_write
+		delete view_read
+		delete view_write
 	}
 
 	function clear_buffer()
@@ -281,15 +281,15 @@ run_beegfs_ctl | awk \
 			"READ(OUT)"))
 	}
 
-	function load_keys(map_view,        map_key)
+	function load_keys(        key)
 	{
 		delete _keys
-		if (map_view == "client") for (map_key in client_keys)
-			_keys[map_key] = client_keys[map_key]
-		else if (map_view == "server") for (map_key in server_keys)
-			_keys[map_key] = server_keys[map_key]
-		else if (map_view == "user") for (map_key in user_keys)
-			_keys[map_key] = user_keys[map_key]
+		if (view == "client") for (key in client_keys)
+			_keys[key] = client_keys[key]
+		else if (view == "server") for (key in server_keys)
+			_keys[key] = server_keys[key]
+		else if (view == "user") for (key in user_keys)
+			_keys[key] = user_keys[key]
 	}
 
 	function parse_line()
@@ -299,23 +299,23 @@ run_beegfs_ctl | awk \
 		map_op = substr(map_name, 1, 2) # rd/wr
 
 		if (!match($0, /\[.*\]:/)) return 0
-		map_key = substr($0, RSTART + 1, RLENGTH - 3)
+		key = substr($0, RSTART + 1, RLENGTH - 3)
 		map_value = $NF
 
 		if (view == "user") {
-			map_key = int(map_key)
+			key = int(key)
 		}
 
-		if (view == "client") client_keys[map_key]
-		else if (view == "server") server_keys[map_key]
-		else if (view == "user") user_keys[map_key]
+		if (view == "client") client_keys[key]
+		else if (view == "server") server_keys[key]
+		else if (view == "user") user_keys[key]
 
 		if (map_op == "rd") {
-			map_view_read[view] += map_value
-			map_key_read[view, map_key] = map_value
+			view_read[view] += map_value
+			key_read[view, key] = map_value
 		} else { # wr
-			map_view_write[view] += map_value
-			map_key_write[view, map_key] = map_value
+			view_write[view] += map_value
+			key_write[view, key] = map_value
 		}
 
 		return 1
@@ -389,9 +389,9 @@ run_beegfs_ctl | awk \
 		cred_write, write_bar, write_bar_pct, write_rate, write_total,
 		i, n, r, v, _keys_sorted, table_rows, cred)
 	{
-		read_total = map_view_read[curview]
+		read_total = view_read[curview]
 		read_rate = read_total / interval
-		write_total = map_view_write[curview]
+		write_total = view_write[curview]
 		write_rate = write_total / interval
 
 		if (output_json) {
@@ -426,8 +426,8 @@ run_beegfs_ctl | awk \
 		#
 		load_keys(curview)
 		for (cred in _keys) {
-			v = int(map_key_read[curview, cred]) + \
-				int(map_key_write[curview, cred])
+			v = int(key_read[curview, cred]) + \
+				int(key_write[curview, cred])
 			_keys[cred] = sprintf("%99d %s", v, cred)
 		}
 
@@ -441,8 +441,8 @@ run_beegfs_ctl | awk \
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
 
-			cred_read = map_key_read[curview, cred]
-			cred_write = map_key_write[curview, cred]
+			cred_read = key_read[curview, cred]
+			cred_write = key_write[curview, cred]
 
 			read_rate = cred_read / interval
 			if (read_total > 0)
