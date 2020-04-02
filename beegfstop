@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-01 19:45:17 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 08:52:58 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.4 $'
+VERSION='$Version: 0.4.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -93,7 +93,7 @@ run_beegfs_ctl()
 	fi
 	expect -f- strace -e trace=poll beegfs-ctl "$@" <<-'END-EXPECT' | awk '
 		!/^(poll\(|\))/ { print; fflush(); next}
-		sub(/^poll\(.*fd=0.*/,"") { print; fflush() }
+		sub(/^poll\(.*fd=0.*/, "---") { print; fflush() }
 	' # END-AWK
 		spawn {*}$argv
 		while (1) {
@@ -387,11 +387,10 @@ run_beegfs_ctl | awk \
 
 	function sample_check()
 	{
-		if (nsamples > 0 && --samples_left < 1) {
+		if (nsamples > 0 && samples_left-- < 1) {
 			system(sprintf("kill %d > /dev/null 2>&1", bpid))
 			exit
 		}
-		seek_end = 0
 	}
 
 	function process_view(curview,
@@ -514,10 +513,7 @@ run_beegfs_ctl | awk \
 		print
 
 		# Exit if no more samples desired
-		if (/^===/ && !/= 0 s =/)
-			seek_end = 1
-		else if (seek_end && /^[[:space:]]*$/)
-			sample_check()
+		if (/^---$/) sample_check()
 
 		next
 	}
