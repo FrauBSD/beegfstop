@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 11:36:30 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-04-02 11:45:04 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 0.9.3 $'
+VERSION='$Version: 0.9.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -290,9 +290,11 @@ run_beegfs_ctl | awk \
 		_keys[key]
 
 		if (view == "SERVER") {
-			# NB: KiB rate -> B interval
-			key_read[key] = $3 * 1024 * interval
-			key_write[key] = $2 * 1024 * interval
+			# NB: KiB/s -> B/interval
+			read_bytes = $3 * 1024 * interval
+			write_bytes = $2 * 1024 * interval
+			key_read["Sum:"] += key_read[key] = read_bytes
+			key_write["Sum:"] += key_write[key] = write_bytes
 		} else {
 			key_read[key] = 0
 			key_write[key] = 0
