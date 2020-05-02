@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-01 17:11:12 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-01 17:32:59 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0 $'
+VERSION='$Version: 2.0.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -111,7 +111,7 @@ run_beegfs_ctl()
 ############################################################ MAIN
 
 #
-# Parse command-line options
+# Process command-line options
 #
 while getopts Cchi:jN:nrsuvw flag; do
 	case "$flag" in
@@ -135,7 +135,7 @@ done
 shift $(( $OPTIND - 1 ))
 
 #
-# Check command-line arguments
+# Process command-line arguments
 #
 [ $# -eq 0 ] || usage "Too many arguments" # NOTREACHED
 
@@ -219,11 +219,11 @@ run_beegfs_ctl | awk \
 		cyan    = "\033[36m"
 		fgreset = "\033[39m"
 
-		# Obtain awk pid
+		# Obtain current process (awk) pid
 		(cmd = "echo $PPID") | getline apid
 		close(cmd)
 
-		# Obtain sh pid
+		# Obtain parent process (sh) pid
 		getline stat < (file = sprintf("/proc/%d/stat", apid))
 		close(file)
 		split(stat, st)
@@ -315,7 +315,7 @@ run_beegfs_ctl | awk \
 			strftime("%c", systime())))
 				#  9 = "Interval:"
 				#  2 = number of spaces
-				# 31 = %31s = date
+				# 31 = %31s date
 		prefix = cons ? inv green : inv bold
 		suffix = cons ? fgreset noinv : noinv nobold
 		buffer_add(sprintf(prefix fmt suffix, view,
