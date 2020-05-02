@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-04-02 14:08:10 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-01 17:11:12 -0700 freebsdfrau $
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +11,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 1.0.1 $'
+VERSION='$Version: 2.0 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -24,6 +24,7 @@ FAILURE=1
 #
 # Command-line options
 #
+COLOR=					# -C
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
 NO_NAMES=				# -n
 NSAMPLES=				# -N num
@@ -37,6 +38,7 @@ WIDE_VIEW=				# -w
 #
 # Miscellaneous
 #
+CONS=1
 VIEW=
 
 ############################################################ FUNCTIONS
@@ -64,6 +66,7 @@ usage()
 
 	printf "Usage: %s [OPTIONS]\n" "$pgm"
 	printf "Options:\n"
+	printf "$optfmt" "-C" "Always enable color."
 	printf "$optfmt" "-c" "View read/write activity by client."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-i sec" \
@@ -110,8 +113,9 @@ run_beegfs_ctl()
 #
 # Parse command-line options
 #
-while getopts chi:jN:nrsuvw flag; do
+while getopts Cchi:jN:nrsuvw flag; do
 	case "$flag" in
+	C) COLOR=1 ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	j) OUTPUT_JSON=1 ;;
@@ -144,6 +148,15 @@ CLIENT) VIEW_SERVER= VIEW_USER= ;;
 SERVER) VIEW_CLIENT= VIEW_USER= ;;
 USER) VIEW_CLIENT= VIEW_SERVER= ;;
 esac
+
+#
+# Process `-C' option
+#
+if [ "$COLOR" ]; then
+	CONS=1
+else
+	[ -t 1 ] || CONS= # stdout is not a tty
+fi
 
 #
 # Validate `-i sec' option
@@ -181,6 +194,7 @@ fi
 #
 run_beegfs_ctl | awk \
 	-v cols=$cols \
+	-v cons=${CONS:-0} \
 	-v interval=$INTERVAL \
 	-v no_names=${NO_NAMES:-0} \
 	-v nsamples=${NSAMPLES:--1} \
@@ -194,6 +208,16 @@ run_beegfs_ctl | awk \
 	BEGIN {
 		samples_left = ++nsamples
 		in_summary = 1
+
+		inv	= "\033[7m"
+		noinv	= "\033[27m"
+		bold    = "\033[1m"
+		nobold  = "\033[22m"
+		red     = "\033[31m"
+		green   = "\033[32m"
+		yellow  = "\033[33m"
+		cyan    = "\033[36m"
+		fgreset = "\033[39m"
 
 		# Obtain awk pid
 		(cmd = "echo $PPID") | getline apid
@@ -224,15 +248,34 @@ run_beegfs_ctl | awk \
 			vsz = 15 # Maximize bar column
 		}
 
-		fmt = "%-"vsz"s %12s %12s %*s|%-*s %-12s\n"
+		fmt = ""
+		fmtsz = 0
+		fmt = fmt " %-" vsz "s" # VIEW column
+		fmtsz += 1 + vsz
+		fmt = fmt " %12s" # TOTAL column
+		fmtsz += 1 + 12
+		if (cons) {
+			fmt = fmt " " red "%12s" # WRITE(IN) column
+		} else {
+			fmt = fmt " %12s" # WRITE(IN) column
+		}
+		fmtsz += 1 + 12
 		bar_size = (cols - vsz - 36 - 4 - 1) / 2
 			# 36 = 3 x %12s
 			#  4 = number of spaces
 			#  1 = balance odd cols
-		fmtsz = vsz + 36 + 4 + int(bar_size) * 2 + 1
-			# 36 = 3 x %12s
-			#  4 = number of spaces
-			#  1 = "|" between bars
+		fmt = fmt " %*s" # write_bar
+		if (cons) {
+			fmt = fmt fgreset "|" cyan "%-*s" # read_bar
+		} else {
+			fmt = fmt "|%-*s" # read_bar
+		}
+		fmtsz += 1 + bar_size + 1 + bar_size
+		fmt = fmt " %-12s" # READ(OUT) column
+		fmtsz += 1 + 12
+		fmt = substr(fmt, 2) # Trim leading space
+		fmtsz -= 1
+		fmt = fmt (cons ? fgreset : "") "\n"
 
 		if (!raw_view) {
 			clear_buffer()
@@ -244,7 +287,7 @@ run_beegfs_ctl | awk \
 	######################################## FUNCTIONS
 
 	function buffer_add(text) { BUFFER = BUFFER text }
-	function print_buffer() { printf "%s", BUFFER }
+	function print_buffer() { printf "%s", BUFFER; fflush() }
 
 	function clear_data()
 	{
@@ -273,7 +316,9 @@ run_beegfs_ctl | awk \
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s = date
-		buffer_add(sprintf("\033[7;1m" fmt "\033[27;22m", view,
+		prefix = cons ? inv green : inv bold
+		suffix = cons ? fgreset noinv : noinv nobold
+		buffer_add(sprintf(prefix fmt suffix, view,
 			"TOTAL", "WRITE(IN)", bar_size, "", bar_size, "",
 			"READ(OUT)"))
 	}
@@ -499,7 +544,9 @@ run_beegfs_ctl | awk \
 					humanize(read_rate)))
 			}
 		}
-		if (i > 0) buffer_add(sprintf("(%d more) ... ", i))
+		if (i > 0) buffer_add(sprintf("%s(%d more) ... %s",
+			cons ? inv bold yellow : "", i,
+			cons ? noinv nobold fgreset : ""))
 	}
 
 	######################################## MAIN
