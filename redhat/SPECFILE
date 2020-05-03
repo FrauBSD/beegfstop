@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 2.1.4
+Version: 3.0
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 3.0-1
+- a4f2811 Add support for live terminal resizing
 * Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 2.1.4-1
 - a75dcc1 Introduce buffer_add_data()
 * Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 2.1.3-1
