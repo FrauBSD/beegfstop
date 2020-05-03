@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:15:49 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:24:52 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.1.1 $'
+VERSION='$Version: 2.1.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -478,10 +478,10 @@ fi
 	}
 
 	function process_view(curview,
-		cred_read, read_bar, read_bar_pct, read_rate, read_total,
-		cred_write, write_bar, write_bar_pct, write_rate, write_total,
+		read_bar, read_rate, read_total,
+		write_bar, write_rate, write_total,
 		rw_rate, rw_total,
-		i, n, r, v, _keys_sorted, table_rows, cred)
+		_keys_sorted, cred, i, v, r, n, table_rows)
 	{
 		if (output_json && in_summary) {
 			in_summary = 0
@@ -539,71 +539,82 @@ fi
 		r = 0
 		n = _asort(_keys, _keys_sorted)
 		table_rows = output_json ? n : rows - 4
-		for (i = n; i >= 1 && r++ <= table_rows; i--) {
+		for (i = n; i >= 1 && r <= table_rows; i--) {
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
-			if (cred == "Sum:") continue
-
-			cred_read = key_read[cred]
-			cred_write = key_write[cred]
-
-			read_rate = cred_read / interval
-			if (read_total > 0)
-				read_bar_pct = cred_read / read_total
-			else
-				read_bar_pct = 0
-			read_bar_size = bar_size * read_bar_pct
-			read_bar = sprintf("%*s", read_bar_size, "")
-			gsub(/ /, "=", read_bar)
-			sub(/.$/, ">", read_bar)
-
-			write_rate = cred_write / interval
-			if (write_total > 0)
-				write_bar_pct = cred_write / write_total
-			else
-				write_bar_pct = 0
-			write_bar_size = bar_size * write_bar_pct
-			write_bar = sprintf("%*s", write_bar_size, "")
-			gsub(/ /, "=", write_bar)
-			sub(/^./, "<", write_bar)
-
-			if (!output_json && length(cred) > vsz) {
-				cred = substr(cred, 1, vsz)
-			}
-
-			if (output_json) {
-				# ST: JSONDATA
-				json_out = ""
-				json_out = json_add_uint(json_out, "time", tm)
-				json_out = json_add_str(json_out,
-					"ident", curview)
-				json_out = json_add_str(json_out,
-					curview, cred)
-				json_out = json_add_uint(json_out,
-					"total_bytes", cred_read + cred_write)
-				json_out = json_add_float(json_out,
-					"total_rate", read_rate + write_rate)
-				json_out = json_add_uint(json_out,
-					"read_bytes", cred_read)
-				json_out = json_add_float(json_out,
-					"read_rate", read_rate)
-				json_out = json_add_uint(json_out,
-					"write_bytes", cred_write)
-				json_out = json_add_float(json_out,
-					"write_rate", write_rate)
-				buffer_add("{" json_out "}\n")
-			} else {
-				# ST: VIEWDATA
-				buffer_add(sprintf(fmt, cred,
-					humanize(write_rate + read_rate),
-					humanize(write_rate), bar_size,
-					write_bar, bar_size, read_bar,
-					humanize(read_rate)))
-			}
+			r += process_cred(curview, cred,
+				read_total, write_total)
 		}
 		if (i > 0) buffer_add(sprintf("%s(%d more) ... %s",
 			cons ? inv bold yellow : "", i,
 			cons ? noinv nobold fgreset : ""))
+	}
+
+	function process_cred(curview, cred, read_total, write_total,
+		cred_read, read_bar, read_bar_pct, read_bar_size, read_rate,
+		cred_write, write_bar, write_bar_pct, write_bar_size,
+		write_rate)
+	{
+		if (cred == "Sum:") continue
+
+		cred_read = key_read[cred]
+		cred_write = key_write[cred]
+
+		read_rate = cred_read / interval
+		if (read_total > 0)
+			read_bar_pct = cred_read / read_total
+		else
+			read_bar_pct = 0
+		read_bar_size = bar_size * read_bar_pct
+		read_bar = sprintf("%*s", read_bar_size, "")
+		gsub(/ /, "=", read_bar)
+		sub(/.$/, ">", read_bar)
+
+		write_rate = cred_write / interval
+		if (write_total > 0)
+			write_bar_pct = cred_write / write_total
+		else
+			write_bar_pct = 0
+		write_bar_size = bar_size * write_bar_pct
+		write_bar = sprintf("%*s", write_bar_size, "")
+		gsub(/ /, "=", write_bar)
+		sub(/^./, "<", write_bar)
+
+		if (!output_json && length(cred) > vsz) {
+			cred = substr(cred, 1, vsz)
+		}
+
+		if (output_json) {
+			# ST: JSONDATA
+			json_out = ""
+			json_out = json_add_uint(json_out, "time", tm)
+			json_out = json_add_str(json_out,
+				"ident", curview)
+			json_out = json_add_str(json_out,
+				curview, cred)
+			json_out = json_add_uint(json_out,
+				"total_bytes", cred_read + cred_write)
+			json_out = json_add_float(json_out,
+				"total_rate", read_rate + write_rate)
+			json_out = json_add_uint(json_out,
+				"read_bytes", cred_read)
+			json_out = json_add_float(json_out,
+				"read_rate", read_rate)
+			json_out = json_add_uint(json_out,
+				"write_bytes", cred_write)
+			json_out = json_add_float(json_out,
+				"write_rate", write_rate)
+			buffer_add("{" json_out "}\n")
+		} else {
+			# ST: VIEWDATA
+			buffer_add(sprintf(fmt, cred,
+				humanize(write_rate + read_rate),
+				humanize(write_rate), bar_size,
+				write_bar, bar_size, read_bar,
+				humanize(read_rate)))
+		}
+
+		return 1
 	}
 
 	######################################## MAIN
