@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:24:52 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:27:31 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.1.2 $'
+VERSION='$Version: 2.1.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -553,12 +553,14 @@ fi
 	function process_cred(curview, cred, read_total, write_total,
 		cred_read, read_bar, read_bar_pct, read_bar_size, read_rate,
 		cred_write, write_bar, write_bar_pct, write_bar_size,
-		write_rate)
+		write_rate, cred_rw, rw_rate, pch)
 	{
-		if (cred == "Sum:") continue
+		pch = "="
+		if (cred == "Sum:") return 0
 
 		cred_read = key_read[cred]
 		cred_write = key_write[cred]
+		cred_rw = cred_read + cred_write
 
 		read_rate = cred_read / interval
 		if (read_total > 0)
@@ -567,7 +569,7 @@ fi
 			read_bar_pct = 0
 		read_bar_size = bar_size * read_bar_pct
 		read_bar = sprintf("%*s", read_bar_size, "")
-		gsub(/ /, "=", read_bar)
+		gsub(/ /, pch, read_bar)
 		sub(/.$/, ">", read_bar)
 
 		write_rate = cred_write / interval
@@ -577,13 +579,14 @@ fi
 			write_bar_pct = 0
 		write_bar_size = bar_size * write_bar_pct
 		write_bar = sprintf("%*s", write_bar_size, "")
-		gsub(/ /, "=", write_bar)
+		gsub(/ /, pch, write_bar)
 		sub(/^./, "<", write_bar)
 
 		if (!output_json && length(cred) > vsz) {
 			cred = substr(cred, 1, vsz)
 		}
 
+		rw_rate = cred_rw / interval
 		if (output_json) {
 			# ST: JSONDATA
 			json_out = ""
@@ -593,9 +596,9 @@ fi
 			json_out = json_add_str(json_out,
 				curview, cred)
 			json_out = json_add_uint(json_out,
-				"total_bytes", cred_read + cred_write)
+				"total_bytes", cred_rw)
 			json_out = json_add_float(json_out,
-				"total_rate", read_rate + write_rate)
+				"total_rate", rw_rate)
 			json_out = json_add_uint(json_out,
 				"read_bytes", cred_read)
 			json_out = json_add_float(json_out,
@@ -608,9 +611,8 @@ fi
 		} else {
 			# ST: VIEWDATA
 			buffer_add(sprintf(fmt, cred,
-				humanize(write_rate + read_rate),
-				humanize(write_rate), bar_size,
-				write_bar, bar_size, read_bar,
+				humanize(rw_rate), humanize(write_rate),
+				bar_size, write_bar, bar_size, read_bar,
 				humanize(read_rate)))
 		}
 
