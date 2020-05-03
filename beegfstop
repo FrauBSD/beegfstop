@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:29:41 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:31:19 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.1.4 $'
+VERSION='$Version: 3.0 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -129,6 +129,24 @@ run_beegfs_ctl()
 	END-EXPECT
 }
 
+send_user()
+{
+	local type="$1"
+	shift 1 # type
+	printf "%s|%s\n" "$type" "$*"
+}
+
+resize()
+{
+	local size
+	if [ -e /dev/tty ]; then
+		size=$( stty size < /dev/tty 2> /dev/null )
+	else
+		size=$( stty size 2> /dev/null )
+	fi
+	send_user resize "${size:-24 80}"
+}
+
 ############################################################ MAIN
 
 #
@@ -198,25 +216,39 @@ esac
 #
 # Get terminal size
 #
-size=$( stty size 2> /dev/null )
+size=$( resize )
+size="${size#*|}"
 if [ "$size" ]; then
 	cols="${size#*[$IFS]}"
 	rows="${size%%[$IFS]*}"
-	case "$rows$cols" in
-	*[!0-9]*)
-		cols=80
-		rows=24
-		;;
-	esac
 fi
+case "$rows$cols" in
+""|*[!0-9]*)
+	cols=80
+	rows=24
+	;;
+esac
 
 #
 # Run script
 # ST: PRE
 #
 {
-	run_beegfs_ctl
-	echo EXIT:$?
+	trap resize SIGWINCH
+
+	run_beegfs_ctl &
+	bpid=$!
+
+	#
+	# Wait on background (beegfs-ctl) child
+	#
+	status_collected=
+	while kill -0 $bpid > /dev/null 2>&1; do
+		wait > /dev/null 2>&1 # Collect exit status
+		[ "$status_collected" ] || status_collected=$?
+	done
+	echo EXIT:$status_collected # Send status to post-processor
+
 } | awk -v cols=$cols \
 	-v cons=${CONS:-0} \
 	-v interval=$INTERVAL \
@@ -257,8 +289,20 @@ fi
 		split(stat, st)
 		spid = st[4]
 
+		# Obtain parent process (sh) name
+		getline stat < (file = sprintf("/proc/%d/stat", spid))
+		close(file)
+		split(stat, st)
+		comm = st[2]
+		if (match(comm, /^\(.*\)$/))
+			comm = substr(comm, 2, length(comm) - 2)
+
+		# Obtain child (sh) pid
+		(cmd = sprintf("pgrep -P %d %s", spid, comm)) | getline cpid
+		close(cmd)
+
 		# Obtain beegfs-ctl pid
-		(cmd = sprintf("pgrep -P %d", spid)) | getline spid
+		(cmd = sprintf("pgrep -P %d", cpid)) | getline spid
 		close(cmd)
 		(cmd = sprintf("pgrep -P %d expect", spid)) | getline epid
 		close(cmd)
@@ -266,6 +310,22 @@ fi
 		close(cmd)
 		(cmd = sprintf("pgrep -P %d beegfs-ctl", spid)) | getline bpid
 		close(cmd)
+
+		if (!raw_view) {
+			clear_data()
+			resize()
+		}
+	}
+
+	######################################## FUNCTIONS
+
+	function _systime() { return srand() }
+	function buffer_add(text) { BUFFER = BUFFER text }
+	function print_buffer() { printf "%s", BUFFER; fflush() }
+
+	function resize()
+	{
+		if (output_json) return
 
 		#
 		# Calculate columns and column widths
@@ -319,18 +379,10 @@ fi
 		fmtsz -= 1
 		fmt = fmt (cons ? fgreset : "") "\n"
 
-		if (!raw_view) {
-			clear_buffer()
-			buffer_add_header()
-			if (!output_json) print_buffer()
-		}
+		clear_buffer()
+		buffer_add_data()
+		print_buffer()
 	}
-
-	######################################## FUNCTIONS
-
-	function _systime() { return srand() }
-	function buffer_add(text) { BUFFER = BUFFER text }
-	function print_buffer() { printf "%s", BUFFER; fflush() }
 
 	function clear_data()
 	{
@@ -342,11 +394,10 @@ fi
 
 	function clear_buffer()
 	{
-		clear_data()
-
 		BUFFER = ""
 		if (output_json) return
 		buffer_add(sprintf("\033[H\033[J"))
+		buffer_add_header()
 	}
 
 	function buffer_add_header()
@@ -355,7 +406,7 @@ fi
 		buffer_add(sprintf("Interval: %-*s %31s\n",
 			fmtsz - 9 - 2 - 31,
 			sprintf("%.3f", interval) "s",
-			strftime("%c", _systime())))
+			strftime("%c", tm = _systime())))
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s date
@@ -649,14 +700,14 @@ fi
 
 	/^===/ { # Data start
 		read_total = write_total = 0
+		clear_data()
 		clear_buffer()
-		buffer_add_header()
 		next
 	}
 
 	# Data
 	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { parse_line() }
-	view != "SERVER" && /^[^-=[:space:]]/ { parse_line() }
+	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { parse_line() }
 
 	/^---$/ { # Data end
 		buffer_add_data()
@@ -665,8 +716,26 @@ fi
 		# Dump information
 		#
 		print_buffer()
-		clear_data()
 		sample_check() # Exit if no more samples desired
+		next
+	}
+
+	#
+	# ST: CALLS
+	#
+
+	{ call = "" }
+
+	match($0, /^[_a-z]+(-[_a-z]+)?\|/) {
+		call = substr($0, 1, RLENGTH - 1)
+		$0 = substr($0, RSTART + RLENGTH)
+	}
+
+	call == "resize" {
+		if (output_json) next
+		rows = $1
+		cols = $2
+		resize()
 	}
 
 	################################################## END
