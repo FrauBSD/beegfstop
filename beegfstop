@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:05:44 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:07:48 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.7 $'
+VERSION='$Version: 2.0.8 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -235,6 +235,7 @@ fi
 		exit_status = 0 # SUCCESS
 		in_summary = 1
 		samples_left = ++nsamples
+		srand() # seed clock
 
 		inv	= "\033[7m"
 		noinv	= "\033[27m"
@@ -327,6 +328,7 @@ fi
 
 	######################################## FUNCTIONS
 
+	function _systime() { return srand() }
 	function buffer_add(text) { BUFFER = BUFFER text }
 	function print_buffer() { printf "%s", BUFFER; fflush() }
 
@@ -353,7 +355,7 @@ fi
 		buffer_add(sprintf("Interval: %-*s %31s\n",
 			fmtsz - 9 - 2 - 31,
 			sprintf("%.3f", interval) "s",
-			strftime("%c", systime())))
+			strftime("%c", _systime())))
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s date
@@ -630,7 +632,7 @@ fi
 	view != "SERVER" && /^[^-=[:space:]]/ { parse_line() }
 
 	/^---$/ { # Data end
-		tm = systime()
+		tm = _systime()
 
 		#
 		# Process requested view
