@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:10:42 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:13:50 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.9 $'
+VERSION='$Version: 2.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -345,8 +345,8 @@ fi
 		clear_data()
 
 		BUFFER = ""
-		if (!output_json)
-			buffer_add(sprintf("\033[H\033[J"))
+		if (output_json) return
+		buffer_add(sprintf("\033[H\033[J"))
 	}
 
 	function buffer_add_header()
