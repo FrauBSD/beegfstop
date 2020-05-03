@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 12:59:11 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:03:53 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.5 $'
+VERSION='$Version: 2.0.6 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -233,8 +233,8 @@ fi
 
 	BEGIN {
 		exit_status = 0 # SUCCESS
-		samples_left = ++nsamples
 		in_summary = 1
+		samples_left = ++nsamples
 
 		inv	= "\033[7m"
 		noinv	= "\033[27m"
@@ -266,11 +266,22 @@ fi
 		(cmd = sprintf("pgrep -P %d beegfs-ctl", spid)) | getline bpid
 		close(cmd)
 
+		#
+		# Calculate columns and column widths
+		#
+		# NB: bar_size = size of bar column
+		# NB: vsz = size of VIEW column ("view size")
+		#
+		# If given -w (wide view) make bar_size fixed-width and
+		# vsz variable-width.
+		#
+		# Without -w, make vsz fixed-width and bar_size variable.
+		#
 		if (wide_view) {
-			vsz = cols - 36 - 4 - 21 # Maximize view column
+			bar_size = 21
+			vsz = cols - 36 - 4 - bar_size # Maximize view column
 				# 36 = 3 x %12s
 				#  4 = number of spaces
-				# 21 = minimum bar size
 		} else {
 			vsz = 15 # Maximize bar column
 		}
