@@ -3,7 +3,28 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 09:39:42 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 12:55:03 -0700 freebsdfrau $
+#
+############################################################ INFORMATION
+#
+# In beegfstop, a ``view'' is the user's choice between -c, -s, or -u.
+# For example, `-u' asks beegfstop to display the ``user view'' where statistics
+# displayed are on a per-user basis.
+#
+# The code is broken down into:
+# 	- View selection (user choice)
+# 	- Inspection of running system
+# 	- beegfs-ctl execution
+# 	- awk to process beegfs-ctl output
+#
+# Code navigating Search Terms/ST:
+# 	CTLDATA		beegfs-ctl data generation and processing
+# 	JSONDATA	JSON data generation
+# 	OPS		Data operations (read vs write)
+# 	POST		beegfs-ctl post-processor (awk)
+# 	PRE		Start of pre-processor (sh)
+# 	VIEWDATA	View data generation
+# 	VIEWS		View processing
 #
 ############################################################ DEFAULTS
 
@@ -11,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.3 $'
+VERSION='$Version: 2.0.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -190,7 +211,8 @@ if [ "$size" ]; then
 fi
 
 #
-# Trace BeeGFS I/O
+# Run script
+# ST: PRE
 #
 run_beegfs_ctl | awk \
 	-v cols=$cols \
@@ -204,6 +226,8 @@ run_beegfs_ctl | awk \
 	-v view="$VIEW" \
 	-v wide_view=${WIDE_VIEW:-0} \
 	'####################################### BEGIN
+
+	# ST: POST
 
 	BEGIN {
 		samples_left = ++nsamples
@@ -248,6 +272,9 @@ run_beegfs_ctl | awk \
 			vsz = 15 # Maximize bar column
 		}
 
+		#
+		# Calculate format and line width
+		#
 		fmt = ""
 		fmtsz = 0
 		fmt = fmt " %-" vsz "s" # VIEW column
@@ -325,6 +352,7 @@ run_beegfs_ctl | awk \
 
 	function parse_line()
 	{
+		# ST: CTLDATA
 		sub(/\r$/, "")
 		if (match($0, /[^[:space:][:digit:]][[:digit:]]+ \[sum\]/)) {
 			$0 = substr($0, 1, RSTART) " " substr($0, RSTART + 1)
@@ -354,6 +382,10 @@ run_beegfs_ctl | awk \
 			write_bytes = int(_props["B-wr"])
 		}
 		if (read_bytes + write_bytes < 1) return 0
+
+		#
+		# ST: OPS
+		#
 
 		_keys[key]
 		if (view == "SERVER") {
@@ -438,8 +470,10 @@ run_beegfs_ctl | awk \
 			in_summary = 0
 			if (nsamples != 1) return
 		}
+
 		read_total = key_read["Sum:"]
 		read_rate = read_total / interval
+
 		write_total = key_write["Sum:"]
 		write_rate = write_total / interval
 
@@ -462,6 +496,7 @@ run_beegfs_ctl | awk \
 				"write_rate", write_rate)
 			buffer_add("{" json_out "}\n")
 		} else {
+			# ST: VIEWS
 			read_bar = ""
 			write_bar = ""
 			buffer_add(sprintf(fmt, "total",
@@ -517,6 +552,7 @@ run_beegfs_ctl | awk \
 			}
 
 			if (output_json) {
+				# ST: JSONDATA
 				json_out = ""
 				json_out = json_add_uint(json_out, "time", tm)
 				json_out = json_add_str(json_out,
@@ -537,6 +573,7 @@ run_beegfs_ctl | awk \
 					"write_rate", write_rate)
 				buffer_add("{" json_out "}\n")
 			} else {
+				# ST: VIEWDATA
 				buffer_add(sprintf(fmt, cred,
 					humanize(write_rate + read_rate),
 					humanize(write_rate), bar_size,
@@ -562,17 +599,22 @@ run_beegfs_ctl | awk \
 		next
 	}
 
-	/^===/ {
+	#
+	# ST: CTLDATA
+	#
+
+	/^===/ { # Data start
 		read_total = write_total = 0
 		clear_buffer()
 		buffer_add_header()
 		next
 	}
 
+	# Data
 	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { parse_line() }
 	view != "SERVER" && /^[^-=[:space:]]/ { parse_line() }
 
-	/^---$/ {
+	/^---$/ { # Data end
 		tm = systime()
 
 		#
@@ -588,9 +630,7 @@ run_beegfs_ctl | awk \
 		sample_check() # Exit if no more samples desired
 	}
 
-	############################################################
-	# END
-	############################################################
+	################################################## END
 ' # END-QUOTE
 
 exit $SUCCESS
@@ -598,3 +638,10 @@ exit $SUCCESS
 ################################################################################
 # END
 ################################################################################
+# Local Variables:
+# mode: sh
+# tab-width: 8
+# sh-basic-offset: 8
+# indent-tabs-mode: t
+# backward-delete-char-untabify-method: nil
+# End:
