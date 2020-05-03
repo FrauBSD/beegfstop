@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:03:53 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:05:44 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.6 $'
+VERSION='$Version: 2.0.7 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -487,9 +487,11 @@ fi
 
 		read_total = key_read["Sum:"]
 		read_rate = read_total / interval
+		read_bar = ""
 
 		write_total = key_write["Sum:"]
 		write_rate = write_total / interval
+		write_bar = ""
 
 		if (output_json) {
 			json_out = ""
@@ -511,8 +513,6 @@ fi
 			buffer_add("{" json_out "}\n")
 		} else {
 			# ST: VIEWS
-			read_bar = ""
-			write_bar = ""
 			buffer_add(sprintf(fmt, "total",
 				humanize(write_rate + read_rate),
 				humanize(write_rate), bar_size, write_bar,
