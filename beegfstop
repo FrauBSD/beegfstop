@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:13:50 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 13:15:49 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.1 $'
+VERSION='$Version: 2.1.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -480,6 +480,7 @@ fi
 	function process_view(curview,
 		cred_read, read_bar, read_bar_pct, read_rate, read_total,
 		cred_write, write_bar, write_bar_pct, write_rate, write_total,
+		rw_rate, rw_total,
 		i, n, r, v, _keys_sorted, table_rows, cred)
 	{
 		if (output_json && in_summary) {
@@ -495,15 +496,18 @@ fi
 		write_rate = write_total / interval
 		write_bar = ""
 
+		rw_total = read_total + write_total
+		rw_rate = rw_total / interval
+
 		if (output_json) {
 			json_out = ""
 			json_out = json_add_uint(json_out, "time", tm)
 			json_out = json_add_str(json_out,
 				"ident", "total_" curview)
 			json_out = json_add_uint(json_out,
-				"total_bytes", read_total + write_total)
+				"total_bytes", rw_total)
 			json_out = json_add_float(json_out,
-				"total_rate", read_rate + write_rate)
+				"total_rate", rw_rate)
 			json_out = json_add_uint(json_out,
 				"read_bytes", read_total)
 			json_out = json_add_float(json_out,
