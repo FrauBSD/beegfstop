@@ -3,7 +3,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-03 12:55:03 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-03 12:59:11 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -32,7 +32,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 2.0.4 $'
+VERSION='$Version: 2.0.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -214,8 +214,10 @@ fi
 # Run script
 # ST: PRE
 #
-run_beegfs_ctl | awk \
-	-v cols=$cols \
+{
+	run_beegfs_ctl
+	echo EXIT:$?
+} | awk -v cols=$cols \
 	-v cons=${CONS:-0} \
 	-v interval=$INTERVAL \
 	-v no_names=${NO_NAMES:-0} \
@@ -230,6 +232,7 @@ run_beegfs_ctl | awk \
 	# ST: POST
 
 	BEGIN {
+		exit_status = 0 # SUCCESS
 		samples_left = ++nsamples
 		in_summary = 1
 
@@ -588,6 +591,7 @@ run_beegfs_ctl | awk \
 
 	######################################## MAIN
 
+	sub(/^EXIT:/, "") { exit_status = $0; next }
 	NR == 1 && $1 == "spawn" && !raw_view { next }
 
 	raw_view {
@@ -631,9 +635,9 @@ run_beegfs_ctl | awk \
 	}
 
 	################################################## END
-' # END-QUOTE
 
-exit $SUCCESS
+	END { exit exit_status }
+' # END-QUOTE
 
 ################################################################################
 # END
