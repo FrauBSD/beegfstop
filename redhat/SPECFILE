@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 2.0.2
+Version: 2.0.3
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 2.0.3-1
+- cb6a73c Use $fmt variable in usage()
 * Fri May  1 2020 Devin Teske <dteske@fraubsd.org> 2.0.2-1
 - 3e4d276 Fix off-by-one error in row calculations
 * Fri May  1 2020 Devin Teske <dteske@fraubsd.org> 2.0.1-1
