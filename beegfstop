@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:31:00 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:44:11 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.1.1 $'
+VERSION='$Version: 3.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -352,12 +352,30 @@ esac
 		# Without -w, make vsz fixed-width and bar_size variable.
 		#
 		dsz = 12
+		vsz_fixed = 15 # VIEW column
+		bar_size_fixed = cols <= 80 ? 11 : 21
 		if (wide_view) {
-			bar_size = 21
-			vsz = cols - dsz * 3 - 4 - bar_size # Maximize view col
-				#  4 = number of spaces
+			# Fixed-width
+			bar_size = bar_size_fixed
+
+			# Variable-width (%-*s)
+			vsz = cols
+			vsz -= 0 + 1 # variable-width VIEW + space
+			vsz -= dsz + 1 # TOTAL + space
+			vsz -= dsz + 1 # WRITE(IN) + space
+			vsz -= bar_size + 1 # bar + space
+			vsz -= dsz # READ(OUT)
 		} else {
-			vsz = 15 # Maximize bar column
+			# Fixed-width
+			vsz = vsz_fixed
+
+			# Variable-width (%-*s)
+			bar_size = cols
+			bar_size -= vsz + 1 # VIEW + space
+			bar_size -= dsz + 1 # TOTAL + space
+			bar_size -= dsz + 1 # WRITE(IN) + space
+			bar_size -= 0 + 1 # variable-width bar + space
+			bar_size -= dsz # READ(OUT)
 		}
 
 		#
@@ -369,17 +387,16 @@ esac
 		fmt = fmt " %-" vsz "s" # VIEW column
 		fmtsz += 1 + vsz
 		fmt = fmt " %" dsz "s" # TOTAL column
-		fmtsz += 1 + dsz
 		if (cons) {
 			fmt = fmt " " red "%" dsz "s" # WRITE(IN) column
 		} else {
 			fmt = fmt " %" dsz "s" # WRITE(IN) column
 		}
-		fmtsz += 1 + dsz
-		bar_size = (cols - vsz - dsz * 3 - 4 - 1) / 2
-			#  4 = number of spaces
-			#  1 = balance odd cols
+		fmtsz += 1 + dsz + 1 + dsz
 		fmt = fmt " %*s" # write_bar
+		full_bar = bar_size
+		bar_size = int(bar_size / 2)
+		if (bar_size * 2 == full_bar) bar_size--
 		if (cons) {
 			fmt = fmt fgreset "|" cyan "%-*s" # read_bar
 		} else {
