@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 12:55:00 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 13:09:53 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.7 $'
+VERSION='$Version: 3.7.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -603,6 +603,7 @@ esac
 	{
 		if (nsamples > 0 && --samples_left < 1) {
 			system(sprintf("kill %d > /dev/null 2>&1", bpid))
+			if (more) printf "\n"
 			exit
 		}
 	}
