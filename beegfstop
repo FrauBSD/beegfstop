@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:12:39 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:16:04 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.0.3 $'
+VERSION='$Version: 3.0.4 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -129,6 +129,10 @@ run_beegfs_ctl()
 		}
 	END-EXPECT
 }
+
+#
+# ST: CALLS
+#
 
 send_user()
 {
@@ -653,10 +657,8 @@ esac
 			# ST: JSONDATA
 			json_out = ""
 			json_out = json_add_uint(json_out, "time", tm)
-			json_out = json_add_str(json_out,
-				"ident", curview)
-			json_out = json_add_str(json_out,
-				curview, cred)
+			json_out = json_add_str(json_out, "ident", curview)
+			json_out = json_add_str(json_out, curview, cred)
 			json_out = json_add_uint(json_out,
 				"total_bytes", cred_rw)
 			json_out = json_add_float(json_out,
