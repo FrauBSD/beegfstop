@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:44:11 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 12:03:03 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.2 $'
+VERSION='$Version: 3.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -434,7 +434,14 @@ esac
 		buffer_add_header()
 	}
 
-	function buffer_add_header()
+	function buffer_add1(arg1, total, write, write_bar, read_bar, read,
+		prefix, suffix)
+	{
+		buffer_add(sprintf(prefix fmt suffix, arg1, total, write,
+			bar_size, write_bar, bar_size, read_bar, read))
+	}
+
+	function buffer_add_header(        prefix, suffix)
 	{
 		if (output_json) return
 		buffer_add(sprintf("Interval: %-*s %31s\n",
@@ -446,10 +453,10 @@ esac
 				# 31 = %31s date
 		prefix = cons ? inv green : ""
 		suffix = cons ? fgreset noinv : ""
+		empty_bar = ""
 		# ST: VIEWS
-		buffer_add(sprintf(prefix fmt suffix, view,
-			"TOTAL", "WRITE(IN)", bar_size, "", bar_size, "",
-			"READ(OUT)"))
+		buffer_add1(view, "TOTAL", "WRITE(IN)", empty_bar, empty_bar,
+			"READ(OUT)", prefix, suffix)
 	}
 
 	function buffer_add_data()
@@ -583,6 +590,9 @@ esac
 		rw_rate, rw_total,
 		_keys_sorted, cred, i, v, r, n, table_rows)
 	{
+		time_delta = interval
+		if (time_delta < 1) time_delta = 1 # prevent division-by-0
+
 		if (output_json && in_summary) {
 			in_summary = 0
 			if (nsamples != 1) return
@@ -593,11 +603,11 @@ esac
 		read_bar = ""
 
 		write_total = key_write["Sum:"]
-		write_rate = write_total / interval
+		write_rate = write_total / time_delta
 		write_bar = ""
 
 		rw_total = read_total + write_total
-		rw_rate = rw_total / interval
+		rw_rate = rw_total / time_delta
 
 		if (output_json) {
 			json_out = ""
@@ -619,10 +629,9 @@ esac
 			buffer_add("{" json_out "}\n")
 		} else {
 			# ST: VIEWS
-			buffer_add(sprintf(fmt, "total",
-				humanize(write_rate + read_rate),
-				humanize(write_rate), bar_size, write_bar,
-				bar_size, read_bar, humanize(read_rate)))
+			buffer_add1("total", humanize(rw_rate),
+				humanize(write_rate), write_bar,
+				read_bar, humanize(read_rate))
 		}
 
 		#
@@ -672,7 +681,7 @@ esac
 		gsub(/ /, pch, read_bar)
 		sub(/.$/, ">", read_bar)
 
-		write_rate = cred_write / interval
+		write_rate = cred_write / time_delta
 		if (write_total > 0)
 			write_bar_pct = cred_write / write_total
 		else
@@ -686,7 +695,7 @@ esac
 			cred = substr(cred, 1, vsz)
 		}
 
-		rw_rate = cred_rw / interval
+		rw_rate = cred_rw / time_delta
 		if (output_json) {
 			# ST: JSONDATA
 			json_out = ""
@@ -708,10 +717,9 @@ esac
 			buffer_add("{" json_out "}\n")
 		} else {
 			# ST: VIEWDATA
-			buffer_add(sprintf(fmt, cred,
-				humanize(rw_rate), humanize(write_rate),
-				bar_size, write_bar, bar_size, read_bar,
-				humanize(read_rate)))
+			buffer_add1(cred, humanize(rw_rate),
+				humanize(write_rate), write_bar,
+				read_bar, humanize(read_rate))
 		}
 
 		return 1
