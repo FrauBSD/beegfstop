@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:25:22 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:31:00 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.1 $'
+VERSION='$Version: 3.1.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -187,7 +187,7 @@ shift $(( $OPTIND - 1 ))
 # Silently ignore previous view options
 #
 [ "$VIEW" ] || VIEW=USER VIEW_USER=1
-case "$VIEW" in
+case "$VIEW" in # ST: VIEWS
 CLIENT) VIEW_SERVER= VIEW_USER= ;;
 SERVER) VIEW_CLIENT= VIEW_USER= ;;
 USER) VIEW_CLIENT= VIEW_SERVER= ;;
@@ -340,6 +340,7 @@ esac
 
 		#
 		# Calculate columns and column widths
+		# ST: VIEWS
 		#
 		# NB: bar_size = size of bar column
 		# NB: dsz = size of TOTAL, READ(IN), WRITE(OUT) data columns
@@ -361,6 +362,7 @@ esac
 
 		#
 		# Calculate format and line width
+		# ST: VIEWS
 		#
 		fmt = ""
 		fmtsz = 0
@@ -399,6 +401,7 @@ esac
 
 	function clear_data()
 	{
+		# ST: VIEWS
 		delete _keys
 
 		delete key_read
@@ -426,6 +429,7 @@ esac
 				# 31 = %31s date
 		prefix = cons ? inv green : ""
 		suffix = cons ? fgreset noinv : ""
+		# ST: VIEWS
 		buffer_add(sprintf(prefix fmt suffix, view,
 			"TOTAL", "WRITE(IN)", bar_size, "", bar_size, "",
 			"READ(OUT)"))
@@ -448,6 +452,10 @@ esac
 		if (match($0, /[^[:space:][:digit:]][[:digit:]]+ \[sum\]/)) {
 			$0 = substr($0, 1, RSTART) " " substr($0, RSTART + 1)
 		}
+
+		#
+		# ST: VIEWS
+		#
 
 		if (view == "SERVER") {
 			key = no_names ? $1 : $NF
