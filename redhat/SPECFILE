@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 3.0.1
+Version: 3.0.2
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.0.2-1
+- 18c8deb Add vim file mode hints
 * Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 3.0.1-1
 - 920efda Fix off-by-one error in row calculations
 * Sun May  3 2020 Devin Teske <dteske@fraubsd.org> 3.0-1
