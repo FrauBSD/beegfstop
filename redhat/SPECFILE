@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 3.6
+Version: 3.7.1
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,9 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.7.1-1
+- eab7bc9 Fix missing newline [3.7.1]
+- bd5205d Defer truncation to prevent data conflicts [3.7]
 * Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.6-1
 - 5d8ee65 Reduce diff against nfsdtop and viotop
 * Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.5-1
