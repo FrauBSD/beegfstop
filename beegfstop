@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 12:16:35 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 12:23:31 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.4.1 $'
+VERSION='$Version: 3.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -47,6 +47,7 @@ FAILURE=1
 # Command-line options
 #
 COLOR=					# -C
+DEBUGGER=				# -D
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
 NO_NAMES=				# -n
 NSAMPLES=				# -N num
@@ -92,6 +93,7 @@ usage()
 	printf "$optfmt" "-b" "Show bytes instead of bandwidth."
 	printf "$optfmt" "-C" "Always enable color."
 	printf "$optfmt" "-c" "View read/write activity by client."
+	printf "$optfmt" "-D" "Enable debugger."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default \`$DEFAULT_INTERVAL'."
@@ -159,11 +161,12 @@ resize()
 #
 # Process command-line options
 #
-while getopts bCchi:jN:nrsuvw flag; do
+while getopts bCcDhi:jN:nrsuvw flag; do
 	case "$flag" in
 	b) SHOW_BYTES=1 ;;
 	C) COLOR=1 ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
+	D) DEBUGGER=1 RAW_VIEW=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	j) OUTPUT_JSON=1 ;;
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
@@ -268,6 +271,7 @@ esac
 
 } | awk -v cols=$cols \
 	-v cons=${CONS:-0} \
+	-v debugger=${DEBUGGER:-0} \
 	-v interval=$INTERVAL \
 	-v no_names=${NO_NAMES:-0} \
 	-v nsamples=${NSAMPLES:--1} \
@@ -281,6 +285,8 @@ esac
 	# ST: POST
 
 	BEGIN {
+		debug2("Terminal size (rows, cols) = (%d, %d)", rows, cols)
+
 		exit_status = 0 # SUCCESS
 		in_summary = 1
 		time_delta = 0 # Calculated
@@ -338,6 +344,8 @@ esac
 	######################################## FUNCTIONS
 
 	function _systime() { return srand() }
+	function debug1(fmt,a1) { if (debugger) printf fmt "\n", a1 }
+	function debug2(fmt,a1,a2) { if (debugger) printf fmt "\n", a1, a2 }
 	function buffer_add(text) { BUFFER = BUFFER text }
 
 	function print_buffer()
@@ -442,7 +450,7 @@ esac
 	{
 		BUFFER = ""
 		if (output_json) return
-		if (cons)
+		if (!debugger && cons)
 			buffer_add(sprintf("\033[H\033[J"))
 		buffer_add_header()
 	}
@@ -606,6 +614,7 @@ esac
 	{
 		time_delta = interval
 		if (time_delta < 1) time_delta = 1 # prevent division-by-0
+		debug1("Time delta is %d seconds", time_delta)
 
 		if (output_json && in_summary) {
 			in_summary = 0
@@ -668,6 +677,7 @@ esac
 		n = _asort(_keys, _keys_sorted)
 		table_rows = output_json || !cons ? n : rows - 4
 		for (i = n; i >= 1 && r <= table_rows; i--) {
+			debug2("r=[%d] table_rows=[%d]", r, table_rows)
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
 			r += process_cred(curview, cred,
@@ -681,10 +691,12 @@ esac
 	function process_cred(curview, cred, read_total, write_total,
 		cred_read, read_bar, read_bar_pct, read_bar_size, read_rate,
 		cred_write, write_bar, write_bar_pct, write_bar_size,
-		write_rate, cred_rw, rw_rate, pch)
+		write_rate, cred_rw, rw_rate, pch, _cred)
 	{
-		pch = "="
 		if (cred == "Sum:") return 0
+		pch = "="
+		debug1("-> process_cred(curview = %s, ...)", curview)
+		debug1("+ cred=[%s]", cred)
 
 		cred_read = key_read[cred]
 		cred_write = key_write[cred]
@@ -711,7 +723,9 @@ esac
 		sub(/^./, "<", write_bar)
 
 		if (!output_json && length(cred) > vsz) {
+			_cred = cred
 			cred = substr(cred, 1, vsz)
+			if (cred != _cred) debug1("+ cred=[%s]", cred)
 		}
 
 		rw_rate = cred_rw / time_delta
@@ -760,7 +774,7 @@ esac
 		# Exit if no more samples desired
 		if (/^---$/) sample_check()
 
-		next
+		if (!debugger) next
 	}
 
 	#
@@ -775,8 +789,8 @@ esac
 	}
 
 	# Data
-	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { parse_line() }
-	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { parse_line() }
+	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { parse_line(); next }
+	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { parse_line(); next }
 
 	/^---$/ { # Data end
 		buffer_add_data()
