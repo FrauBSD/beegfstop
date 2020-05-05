@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 3.4.1
+Version: 3.5
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.5-1
+- ac7db99 Add -D to enable debugger
 * Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.4.1-1
 - 5240a3d Reduce diff against viotop and nfsdtop
 * Tue May  5 2020 Devin Teske <dteske@fraubsd.org> 3.4-1
