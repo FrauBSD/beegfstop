@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:18:28 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-05 11:25:22 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.0.5 $'
+VERSION='$Version: 3.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -326,7 +326,13 @@ esac
 
 	function _systime() { return srand() }
 	function buffer_add(text) { BUFFER = BUFFER text }
-	function print_buffer() { printf "%s", BUFFER; fflush() }
+
+	function print_buffer()
+	{
+		if (!cons) buffer_add("\n")
+		printf "%s", BUFFER
+		fflush()
+	}
 
 	function resize()
 	{
@@ -384,9 +390,11 @@ esac
 		fmtsz -= 1
 		fmt = fmt (cons ? fgreset : "") "\n"
 
-		clear_buffer()
-		buffer_add_data()
-		print_buffer()
+		if (cons) {
+			clear_buffer()
+			buffer_add_data()
+			print_buffer()
+		}
 	}
 
 	function clear_data()
@@ -401,7 +409,8 @@ esac
 	{
 		BUFFER = ""
 		if (output_json) return
-		buffer_add(sprintf("\033[H\033[J"))
+		if (cons)
+			buffer_add(sprintf("\033[H\033[J"))
 		buffer_add_header()
 	}
 
@@ -415,8 +424,8 @@ esac
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s date
-		prefix = cons ? inv green : inv bold
-		suffix = cons ? fgreset noinv : noinv nobold
+		prefix = cons ? inv green : ""
+		suffix = cons ? fgreset noinv : ""
 		buffer_add(sprintf(prefix fmt suffix, view,
 			"TOTAL", "WRITE(IN)", bar_size, "", bar_size, "",
 			"READ(OUT)"))
@@ -604,14 +613,14 @@ esac
 		#
 		r = 1
 		n = _asort(_keys, _keys_sorted)
-		table_rows = output_json ? n : rows - 4
+		table_rows = output_json || !cons ? n : rows - 4
 		for (i = n; i >= 1 && r <= table_rows; i--) {
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
 			r += process_cred(curview, cred,
 				read_total, write_total)
 		}
-		if (i > 0) buffer_add(sprintf("%s(%d more) ... %s",
+		if (more = i > 0) buffer_add(sprintf("%s(%d more) ... %s",
 			cons ? inv bold yellow : "", i,
 			cons ? noinv nobold fgreset : ""))
 	}
