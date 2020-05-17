@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-05 13:09:53 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-16 18:17:45 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.7.1 $'
+VERSION='$Version: 3.7.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -278,6 +278,7 @@ esac
 	-v output_json=${OUTPUT_JSON:-0} \
 	-v raw_view=${RAW_VIEW:-0} \
 	-v rows=$rows \
+	-v tm=$( date +%s ) \
 	-v view="$VIEW" \
 	-v wide_view=${WIDE_VIEW:-0} \
 	'####################################### BEGIN
@@ -291,7 +292,6 @@ esac
 		in_summary = 1
 		time_delta = 0 # Calculated
 		samples_left = ++nsamples
-		srand() # seed clock
 
 		inv	= "\033[7m"
 		noinv	= "\033[27m"
@@ -343,7 +343,6 @@ esac
 
 	######################################## FUNCTIONS
 
-	function _systime() { return srand() }
 	function debug1(fmt,a1) { if (debugger) printf fmt "\n", a1 }
 	function debug2(fmt,a1,a2) { if (debugger) printf fmt "\n", a1, a2 }
 	function buffer_add(text) { BUFFER = BUFFER text }
@@ -462,13 +461,23 @@ esac
 			bar_size, write_bar, bar_size, read_bar, read))
 	}
 
+	function _strftime(fmt, tm,        cmd)
+	{
+		if (tm == _strftime_tm && fmt == _strftime_fmt)
+			return _strftime_dt
+		(cmd = sprintf("date -r %u +\"%s\"", _strftime_tm = tm,
+			_strftime_fmt = fmt)) | getline _strftime_dt
+		close(cmd)
+		return _strftime_dt
+	}
+
 	function buffer_add_header(        prefix, suffix)
 	{
 		if (output_json) return
 		buffer_add(sprintf("Interval: %-*s %31s\n",
 			fmtsz - 9 - 2 - 31,
 			sprintf("%.3f", interval) "s",
-			strftime("%c", tm = _systime())))
+			_strftime("%c", tm)))
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s date
@@ -483,8 +492,6 @@ esac
 
 	function buffer_add_data()
 	{
-		tm = _systime()
-
 		#
 		# Process requested view
 		#
@@ -784,15 +791,23 @@ esac
 	#
 
 	/^===/ { # Data start
+		(cmd = "date +%s") | getline tm
+		close(cmd)
 		read_total = write_total = 0
 		clear_data()
 		clear_buffer()
 		next
 	}
 
-	# Data
-	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { parse_line(); next }
-	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { parse_line(); next }
+	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { # Data
+		parse_line()
+		next
+	}
+
+	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { # Data
+		parse_line()
+		next
+	}
 
 	/^---$/ { # Data end
 		buffer_add_data()
