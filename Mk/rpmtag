@@ -5,7 +5,7 @@
 #
 # $Title: Script for getting the package tag from an RPM name $
 # $Copyright: 1999-2017 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/Mk/rpmtag 2020-03-30 16:33:34 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/Mk/rpmtag 2020-05-16 18:42:41 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -72,6 +72,7 @@ else
 fi
 TAGPREFIX="${PWD#${PKGCENTER%/*}/}" # Remove everything leading up to pkgcenter
 TAGPREFIX="${TAGPREFIX%/*}"
+TAGPREFIX="$TAGPREFIX${TAGPREFIX:+-}${PWD##*/}"
 
 #
 # Replace bad characters with underscore
