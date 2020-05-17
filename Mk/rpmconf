@@ -5,7 +5,7 @@
 #
 # $Title: Script to update pkgcenter.conf file $
 # $Copyright: 2017-2019 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/Mk/rpmconf 2020-03-30 16:33:34 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/Mk/rpmconf 2020-05-17 15:00:22 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -115,7 +115,7 @@ $AWK '$1 == "%files", /^[[:space:]]*$/ { if ($0 ~ "^/") print }' "$SPECFILE" |
 		stagedir  = "$STAGEDIR"
 		stagelen  = length(stagedir)
 		readlink  = ENVIRON["READLINK"] " "
-		template  = pkgcenter "/redhat/Mk/template.conf"
+		template  = pkgcenter "/Mk/template.conf"
 
 		if (ENVIRON["UNAME_s"] == "Darwin")
 			readlink = sprintf("%s -le '\''%s'\'' -- ",
