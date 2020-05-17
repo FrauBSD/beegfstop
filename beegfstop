@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-16 18:28:43 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-16 18:49:04 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.7.4 $'
+VERSION='$Version: 3.7.5 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -279,7 +279,6 @@ esac
 	-v raw_view=${RAW_VIEW:-0} \
 	-v rows=$rows \
 	-v show_bytes=${SHOW_BYTES:-0} \
-	-v tm=$( date +%s ) \
 	-v uname=$( uname ) \
 	-v view="$VIEW" \
 	-v wide_view=${WIDE_VIEW:-0} \
@@ -294,6 +293,7 @@ esac
 		in_summary = 1
 		time_delta = 0 # Calculated
 		samples_left = ++nsamples
+		tm = _systime()
 
 		inv	= "\033[7m"
 		noinv	= "\033[27m"
@@ -344,6 +344,13 @@ esac
 	}
 
 	######################################## FUNCTIONS
+
+	function _systime(        cmd, tm) {
+		if (uname == "Linux") return systime()
+		(cmd = "date +%s") | getline tm
+		close(cmd)
+		return tm
+	}
 
 	function debug1(fmt,a1) { if (debugger) printf fmt "\n", a1 }
 	function debug2(fmt,a1,a2) { if (debugger) printf fmt "\n", a1, a2 }
@@ -465,6 +472,7 @@ esac
 
 	function _strftime(fmt, tm,        cmd, tfmt)
 	{
+		if (uname == "Linux") return strftime(fmt, tm)
 		if (tm == _strftime_tm && fmt == _strftime_fmt)
 			return _strftime_dt
 		tfmt = uname == "Linux" ? "-d @%u" : "-r %u"
@@ -794,8 +802,7 @@ esac
 	#
 
 	/^===/ { # Data start
-		(cmd = "date +%s") | getline tm
-		close(cmd)
+		tm = _systime()
 		read_total = write_total = 0
 		clear_data()
 		clear_buffer()
