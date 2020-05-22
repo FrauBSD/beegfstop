@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-16 18:49:04 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-05-21 20:12:51 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -33,7 +33,7 @@ DEFAULT_INTERVAL=2 # seconds
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 3.7.5 $'
+VERSION='$Version: 4.0 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -46,7 +46,7 @@ FAILURE=1
 #
 # Command-line options
 #
-COLOR=					# -C
+COLOR=1					# -C
 DEBUGGER=				# -D
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
 NO_NAMES=				# -n
@@ -63,6 +63,7 @@ WIDE_VIEW=				# -w
 # Miscellaneous
 #
 CONS=1
+[ -t 1 ] || CONS= COLOR= # stdout is not a tty
 VIEW=
 
 ############################################################ FUNCTIONS
@@ -100,6 +101,7 @@ usage()
 	printf "$optfmt" "-j" "Output JSON formatted data."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
+	printf "$optfmt" "-o" "Force non-console output."
 	printf "$optfmt" "-r" "Raw view. Do not format output of bpftrace."
 	printf "$optfmt" "-s" "View read/write activity by server."
 	printf "$optfmt" "-u" "View read/write activity by user (default)."
@@ -161,7 +163,7 @@ resize()
 #
 # Process command-line options
 #
-while getopts bCcDhi:jN:nrsuvw flag; do
+while getopts bCcDhi:jN:norsuvw flag; do
 	case "$flag" in
 	b) SHOW_BYTES=1 ;;
 	C) COLOR=1 ;;
@@ -172,6 +174,7 @@ while getopts bCcDhi:jN:nrsuvw flag; do
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
 	n) NO_NAMES=1 ;;
+	o) CONS= COLOR= ;;
 	r) RAW_VIEW=1 ;;
 	s) VIEW=SERVER VIEW_SERVER=1 ;;
 	u) VIEW=USER VIEW_USER=1 ;;
@@ -269,7 +272,8 @@ esac
 	done
 	echo EXIT:$status_collected # Send status to post-processor
 
-} | awk -v cols=$cols \
+} | awk -v color=${COLOR:-0} \
+	-v cols=$cols \
 	-v cons=${CONS:-0} \
 	-v debugger=${DEBUGGER:-0} \
 	-v interval=$INTERVAL \
@@ -416,7 +420,7 @@ esac
 		fmt = fmt " %-" vsz "s" # VIEW column
 		fmtsz += 1 + vsz
 		fmt = fmt " %" dsz "s" # TOTAL column
-		if (cons) {
+		if (color) {
 			fmt = fmt " " red "%" dsz "s" # WRITE(IN) column
 		} else {
 			fmt = fmt " %" dsz "s" # WRITE(IN) column
@@ -426,7 +430,7 @@ esac
 		full_bar = bar_size
 		bar_size = int(bar_size / 2)
 		if (bar_size * 2 == full_bar) bar_size--
-		if (cons) {
+		if (color) {
 			fmt = fmt fgreset "|" cyan "%-*s" # read_bar
 		} else {
 			fmt = fmt "|%-*s" # read_bar
@@ -436,8 +440,11 @@ esac
 		fmtsz += 1 + dsz
 		fmt = substr(fmt, 2) # Trim leading space
 		fmtsz -= 1
-		fmt = fmt (cons ? fgreset : "") "\n"
+		fmt = fmt (color ? fgreset : "") "\n"
 
+		#
+		# Redraw console
+		#
 		if (cons) {
 			clear_buffer()
 			buffer_add_data()
@@ -492,8 +499,8 @@ esac
 				#  9 = "Interval:"
 				#  2 = number of spaces
 				# 31 = %31s date
-		prefix = cons ? inv green : ""
-		suffix = cons ? fgreset noinv : ""
+		prefix = color ? inv green : ""
+		suffix = color ? fgreset noinv : ""
 		empty_bar = ""
 		# ST: VIEWS
 		buffer_add1(view, "TOTAL",
@@ -704,8 +711,8 @@ esac
 				read_total, write_total)
 		}
 		if (more = i > 0) buffer_add(sprintf("%s(%d more) ... %s",
-			cons ? inv bold yellow : "", i,
-			cons ? noinv nobold fgreset : ""))
+			color ? inv bold yellow : "", i,
+			color ? noinv nobold fgreset : ""))
 	}
 
 	function process_cred(curview, cred, read_total, write_total,
