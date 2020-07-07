@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-05-24 17:14:45 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-06 18:27:43 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -12,18 +12,24 @@
 # For example, `-u' asks beegfstop to display the ``user view'' where statistics
 # displayed are on a per-user basis.
 #
+# The ``mode'' is the user's choice between viewing data input/output (this is
+# the default) and metadata operations (-m).
+#
 # The code is broken down into:
+# 	- Mode selection (user choice)
 # 	- View selection (user choice)
 # 	- Inspection of running system
 # 	- beegfs-ctl execution
 # 	- awk to process beegfs-ctl output
 #
 # Code navigating Search Terms/ST:
+# 	BEEGFSCTL	Start of beegfs-ctl
 # 	CTLDATA		beegfs-ctl data generation and processing
 # 	JSONDATA	JSON data generation
 # 	OPS		Data operations (read vs write)
 # 	POST		beegfs-ctl post-processor (awk)
 # 	PRE		Start of pre-processor (sh)
+# 	SORTING		Sort routines
 # 	VIEWDATA	View data generation
 # 	VIEWS		View processing
 #
@@ -31,9 +37,18 @@
 
 DEFAULT_INTERVAL=2 # seconds
 
+#
+# Sorting choices (case-insensitive):
+# 	total (in any mode; default sort column)
+# 	read write in out (without `-m')
+# 	stat statLI (with `-m' and either `-u' or `-c')
+# 	reqs qlen (with `-m' and `-s')
+#
+DEFAULT_SORT=total
+
 ############################################################ GLOBALS
 
-VERSION='$Version: 5.0.5 $'
+VERSION='$Version: 6.0 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -49,12 +64,14 @@ FAILURE=1
 COLOR=1					# -C
 DEBUGGER=				# -D
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
+MODE=data				# vs `meta' (-m)
 NO_NAMES=				# -n
 NSAMPLES=				# -N num
 OUTPUT_JSON=				# -j
 RAW_VIEW=				# -r
 REDACT=${BEEGFSTOP_REDACT:+1}		# -R
-SHOW_BYTES=				# -b
+SHOW_BASIC=				# -b
+SORT=$DEFAULT_SORT			# -k col
 VIEW_CLIENT=				# -c
 VIEW_SERVER=				# -s
 VIEW_USER=				# -u (default)
@@ -65,6 +82,8 @@ WIDE_VIEW=				# -w
 #
 CONS=1
 [ -t 1 ] || CONS= COLOR= # stdout is not a tty
+MODE_DATA=
+MODE_META=
 VIEW=
 
 ############################################################ FUNCTIONS
@@ -92,7 +111,7 @@ usage()
 
 	printf "Usage: %s [OPTIONS]\n" "$pgm"
 	printf "Options:\n"
-	printf "$optfmt" "-b" "Show bytes instead of bandwidth."
+	printf "$optfmt" "-b" "Show basic counts instead of rates."
 	printf "$optfmt" "-C" "Always enable color."
 	printf "$optfmt" "-c" "View read/write activity by client."
 	printf "$optfmt" "-D" "Enable debugger."
@@ -100,6 +119,8 @@ usage()
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default \`$DEFAULT_INTERVAL'."
 	printf "$optfmt" "-j" "Output JSON formatted data."
+	printf "$optfmt" "-k col" "Sort column (default \`$DEFAULT_SORT')."
+	printf "$optfmt" "-m" "Show metadata statistics."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
 	printf "$optfmt" "-o" "Force non-console output."
@@ -115,14 +136,18 @@ usage()
 
 run_beegfs_ctl()
 {
-	set -- --nodetype=storage --interval=$INTERVAL "$@"
+	case "$MODE" in
+	data) set -- --nodetype=storage "$@" ;;
+	meta) set -- --nodetype=meta "$@" ;;
+	esac
+	set -- --interval=$INTERVAL "$@"
 	[ "$NO_NAMES" ] || set -- --names "$@"
 	if [ "$VIEW_CLIENT" ]; then
-		set -- --clientstats --rwunit=B --perinterval "$@"
+		set -- --clientstats ${MODE_DATA:+--rwunit=B} --perinterval "$@"
 	elif [ "$VIEW_SERVER" ]; then
 		set -- --serverstats --perserver "$@"
 	elif [ "$VIEW_USER" ]; then
-		set -- --userstats --rwunit=B --perinterval "$@"
+		set -- --userstats ${MODE_DATA:+--rwunit=B} --perinterval "$@"
 	fi
 	expect -f- strace -e trace=poll beegfs-ctl "$@" <<-'END-EXPECT' | awk '
 		!/^(poll\(|\))/ { print; fflush(); next}
@@ -153,7 +178,7 @@ resize()
 {
 	local size
 	if [ -e /dev/tty ]; then
-		size=$( stty size < /dev/tty 2> /dev/null )
+		size=$( { stty size < /dev/tty; } 2> /dev/null )
 	else
 		size=$( stty size 2> /dev/null )
 	fi
@@ -165,14 +190,16 @@ resize()
 #
 # Process command-line options
 #
-while getopts bCcDhi:jN:noRrsuvw flag; do
+while getopts bCcDhi:jk:mN:noRrsuvw flag; do
 	case "$flag" in
-	b) SHOW_BYTES=1 ;;
+	b) SHOW_BASIC=1 ;;
 	C) COLOR=1 ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
 	D) DEBUGGER=1 RAW_VIEW=1 ;;
 	i) INTERVAL="$OPTARG" ;;
 	j) OUTPUT_JSON=1 ;;
+	k) SORT="$OPTARG" ;;
+	m) MODE=meta ;;
 	N) [ "$OPTARG" ] || usage "-N option requires an argument" # NOTREACHED
 		NSAMPLES="$OPTARG" ;;
 	n) NO_NAMES=1 ;;
@@ -198,7 +225,7 @@ shift $(( $OPTIND - 1 ))
 #
 # Prevent non-functional option combinations
 #
-if [ "$SHOW_BYTES" ]; then
+if [ "$SHOW_BASIC" ]; then
 	[ ! "$OUTPUT_JSON" ] || die "-b cannot be combined with -j"
 fi
 
@@ -221,6 +248,46 @@ case "$INTERVAL" in
 "") usage "missing -i argument" ;; # NOTREACHED
 0) die "-i sec must be non-zero" ;;
 *[!0-9]*) die "-i sec must be a number" ;;
+esac
+
+#
+# Validate `-k col' option
+# ST: SORTING
+#
+if [ "$MODE" = data ]; then
+	case "$SORT" in
+	"") usage "missing -k argument" ;; # NOTREACHED
+	[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+	[Rr][Ee][Aa][Dd]|[Ii][Nn]) SORT=read ;; # READ(IN)
+	[Ww][Rr][Ii][Tt][Ee]|[Oo][Uu][Tt]) SORT=write ;; # WRITE(OUT)
+	*) die "-k col must be one of: total read write in out"
+	esac
+elif [ "$MODE" = meta ]; then
+	if [ "$VIEW_USER" -o "$VIEW_CLIENT" ]; then
+		case "$SORT" in
+		"") usage "missing -k argument" ;; # NOTREACHED
+		[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+		[Ss][Tt][Aa][Tt]) SORT=stat ;; # STAT
+		[Ss][Tt][Aa][Tt][Ll][Ii]) SORT=statLI ;; # STATLI
+		*) die "-k col must be one of: total stat statLI"
+		esac
+	elif [ "$VIEW_SERVER" ]; then
+		case "$SORT" in
+		"") usage "missing -k argument" ;; # NOTREACHED
+		[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+		[Rr][Ee][Qq][Ss]) SORT=reqs ;; # REQS
+		[Qq][Ll][Ee][Nn]) SORT=qlen ;; # QLEN
+		*) die "-k col must be one of: total reqs qlen"
+		esac
+	fi
+fi
+
+#
+# Process `-m' option
+#
+case "$MODE" in
+data) MODE_DATA=1 MODE_META= ;;
+meta) MODE_META=1 MODE_DATA= ;;
 esac
 
 #
@@ -251,8 +318,12 @@ esac
 # ST: PRE
 #
 {
-	trap resize SIGWINCH
+	trap resize WINCH # ST: SIGWINCH
 
+	#
+	# Start background beegfs-ctl
+	# ST: BEEGFSCTL
+	#
 	run_beegfs_ctl &
 	bpid=$!
 
@@ -269,15 +340,19 @@ esac
 } | awk -v color=${COLOR:-0} \
 	-v cols=$cols \
 	-v cons=${CONS:-0} \
+	-v data_mode=${MODE_DATA:-0} \
 	-v debugger=${DEBUGGER:-0} \
 	-v interval=$INTERVAL \
+	-v meta_mode=${MODE_META:-0} \
+	-v mode="$MODE" \
 	-v no_names=${NO_NAMES:-0} \
 	-v nsamples=${NSAMPLES:--1} \
 	-v output_json=${OUTPUT_JSON:-0} \
 	-v raw_view=${RAW_VIEW:-0} \
 	-v redact=${REDACT:-0} \
 	-v rows=$rows \
-	-v show_bytes=${SHOW_BYTES:-0} \
+	-v show_basic=${SHOW_BASIC:-0} \
+	-v sort="$SORT" \
 	-v uname=$( uname ) \
 	-v view="$VIEW" \
 	-v wide_view=${WIDE_VIEW:-0} \
@@ -411,7 +486,8 @@ esac
 		# ST: VIEWS
 		#
 		# NB: bar_size = size of bar column (if shown)
-		# NB: dsz = size of TOTAL, READ(OUT), WRITE(IN) data columns
+		# NB: dsz = size of TOTAL, READ(OUT), WRITE(IN), STAT, STATLI,
+		#     REQS, and QLEN data columns
 		# NB: vsz = size of VIEW column ("view size")
 		#
 		# If given -w (wide view) make bar_size fixed-width and
@@ -423,12 +499,18 @@ esac
 		wv = wide_view
 
 		show_bar_column = 1
-		show_rw_columns = 1
+		if (mode == "data") {
+			show_rw_columns = 1
+			show_stat_columns = 0
+		} else if (mode == "meta") {
+			show_rw_columns = 0
+			show_stat_columns = 1
+		}
 
 		vsz_min = length(view)
 		vsz_max = 15
 
-		dsz = show_bytes ? 10 : 12
+		dsz = show_basic ? 10 : 12
 		bar_size_fixed_max = 21
 		bar_size_fixed_min = 11
 
@@ -480,10 +562,18 @@ esac
 		} else if (cols >= vsz_cols1) {
 			vsz_fixed += cols - vsz_cols1
 		} else if (cols >= vsz_cols2) {
-			show_rw_columns = 0
+			if (mode == "data") {
+				show_rw_columns = 0
+			} else if (mode == "meta") {
+				show_stat_columns = 0
+			}
 			wv = 1
 		} else {
-			show_rw_columns = 0
+			if (mode == "data") {
+				show_rw_columns = 0
+			} else if (mode == "meta") {
+				show_stat_columns = 0
+			}
 		}
 
 		if (wv) {
@@ -494,12 +584,14 @@ esac
 			vsz = cols
 			vsz -= 0 + 1 # %-*s VIEW + space
 			vsz -= dsz # TOTAL
-			if (show_rw_columns) {
-				vsz -= 1 + dsz + 1 # space + WRITE(IN) + space
+			if (show_rw_columns || show_stat_columns) {
+				# space + WRITE(IN)/STAT/REQS + space
+				vsz -= 1 + dsz + 1
+
 				if (bar_size > 0) {
 					vsz -= bar_size + 1 # bar + space
 				}
-				vsz -= dsz # READ(OUT)
+				vsz -= dsz # READ(OUT)/STATLI/QLEN
 			}
 		} else if (show_bar_column) {
 			# Fixed-width
@@ -509,9 +601,9 @@ esac
 			bar_size = cols
 			bar_size -= vsz + 1 # %[-]*s VIEW + space
 			bar_size -= dsz + 1 # TOTAL + space
-			bar_size -= dsz + 1 # WRITE(IN) + space
+			bar_size -= dsz + 1 # WRITE(IN)/STAT/REQS + space
 			bar_size -= 0 + 1 # variable-width bar + space
-			bar_size -= dsz # READ(OUT)
+			bar_size -= dsz # READ(OUT)/STATLI/QLEN
 		} else {
 			# Fixed-width
 			vsz = vsz_fixed
@@ -530,9 +622,9 @@ esac
 		fmt = fmt " %" dsz "s" # TOTAL
 		fmtsz += 1 + dsz
 		if (color) {
-			fmt = fmt " " red "%" dsz "s" # WRITE(IN)
+			fmt = fmt " " red "%" dsz "s" # WRITE(IN)/STAT/REQS
 		} else {
-			fmt = fmt " %" dsz "s" # WRITE(IN)
+			fmt = fmt " %" dsz "s" # WRITE(IN)/STAT/REQS
 		}
 		fmtsz += 1 + dsz
 
@@ -541,19 +633,21 @@ esac
 			bar_size = int(bar_size / 2)
 			if (bar_size * 2 == full_bar) bar_size--
 			fmt = fmt " %*s" # write_bar
+			# read/stat bar
 			if (color) {
-				fmt = fmt fgreset "|" cyan "%-*s" # read_bar
+				fmt = fmt fgreset "|" cyan "%-*s"
 			} else {
-				fmt = fmt "|%-*s" # read_bar
+				fmt = fmt "|%-*s"
 			}
 			fmtsz += 1 + bar_size + 1 + bar_size
-			fmt = fmt " %-" dsz "s" # READ(OUT)
+			fmt = fmt " %-" dsz "s" # READ(OUT)/STATLI/QLEN
 			fmtsz += 1 + dsz
-		} else if (show_rw_columns) {
+		} else if (show_rw_columns || show_stat_columns) {
+			# READ(OUT)/STATLI/QLEN
 			if (color) {
-				fmt = fmt " " cyan "%" dsz "s" # READ(OUT)
+				fmt = fmt " " cyan "%" dsz "s"
 			} else {
-				fmt = fmt " %" dsz "s" # READ(OUT)
+				fmt = fmt " %" dsz "s"
 			}
 			fmtsz += 1 + dsz
 		}
@@ -583,8 +677,18 @@ esac
 		# ST: VIEWS
 		delete _keys
 
-		delete key_read
-		delete key_write
+		if (data_mode) {
+			delete key_read
+			delete key_write
+		} else if (meta_mode) {
+			if (view == "SERVER") {
+				delete key_reqs
+				delete key_qlen
+			} else {
+				delete key_stat
+				delete key_statLI
+			}
+		}
 	}
 
 	function clear_buffer()
@@ -596,8 +700,8 @@ esac
 		buffer_add_header()
 	}
 
-	function buffer_add1(arg1, total, read, read_bar, write_bar,
-		write, prefix, suffix,        str)
+	function buffer_add1(arg1, total, value1, bar1, bar2,
+		value2, prefix, suffix,        str)
 	{
 		if (redact && view == "USER") {
 			if (arg1 !~ unredacted_users)
@@ -609,13 +713,15 @@ esac
 			if (arg1 !~ unredacted_servers)
 				arg1 = get_random(length(arg1))
 		}
-		if (length(arg1) > csz["view"])
+		if (length(arg1) > csz["view"]) {
 			arg1 = substr(arg1, 1, csz["view"])
+		}
+
 		if (show_bar_column) {
-			str = sprintf(fmt, arg1, total, write, bar_size,
-				write_bar, bar_size, read_bar, read)
+			str = sprintf(fmt, arg1, total, value2, bar_size,
+				bar2, bar_size, bar1, value1)
 		} else {
-			str = sprintf(fmt, arg1, total, write, read)
+			str = sprintf(fmt, arg1, total, value2, value1)
 		}
 		if (cols < fmtsz) {
 			str = substr(str, 1, cols) (str ~ /\n$/ ? "\n" : "")
@@ -666,8 +772,20 @@ esac
 		suffix = color ? fgreset noinv : ""
 		empty_bar = ""
 		# ST: VIEWS
+		if (mode == "data") {
+			colnam1 = "READ(OUT)"
+			colnam2 = "WRITE(IN)"
+		} else if (mode == "meta") {
+			if (view == "SERVER") {
+				colnam1 = "REQS"
+				colnam2 = "QLEN"
+			} else {
+				colnam1 = "STAT"
+				colnam2 = "STATLI"
+			}
+		}
 		buffer_add1(view, "TOTAL",
-			"READ(OUT)", empty_bar, empty_bar, "WRITE(IN)",
+			colnam1, empty_bar, empty_bar, colnam2,
 			prefix, suffix)
 	}
 
@@ -697,11 +815,25 @@ esac
 			key = $1
 		}
 
-		read_bytes = write_bytes = 0
+		if (mode == "data") {
+			read_bytes = write_bytes = 0
+		} else if (mode == "meta") {
+			if (view == "SERVER") {
+				reqs = qlen = 0
+			} else {
+				stat = statLI = 0
+			}
+		}
 		if (view == "SERVER") {
-			# NB: KiB/s -> B/interval
-			read_bytes = $3 * 1024 * interval
-			write_bytes = $2 * 1024 * interval
+			if (mode == "data") {
+				# NB: KiB/s -> B/interval
+				read_bytes = $3 * 1024 * interval
+				write_bytes = $2 * 1024 * interval
+			} else if (mode == "meta") {
+				# NB: ops/s -> ops/interval
+				reqs = $2 * interval
+				qlen = $3 * interval
+			}
 		} else {
 			delete _props
 			$0 = substr($0, length(key) + 1)
@@ -711,10 +843,16 @@ esac
 				_props[kprop] = value
 				$0 = substr($0, RLENGTH + 1)
 			}
-			read_bytes = int(_props["B-rd"])
-			write_bytes = int(_props["B-wr"])
+			if (mode == "data") {
+				read_bytes = int(_props["B-rd"])
+				write_bytes = int(_props["B-wr"])
+				if (read_bytes + write_bytes < 1) return 0
+			} else if (mode == "meta") {
+				stat = int(_props["stat"])
+				statLI = int(_props["statLI"])
+				if (stat + statLI < 1) return 0
+			}
 		}
-		if (read_bytes + write_bytes < 1) return 0
 
 		#
 		# ST: OPS
@@ -722,26 +860,50 @@ esac
 
 		_keys[key]
 		if (view == "SERVER") {
-			key_read["Sum:"] += read_bytes
-			key_write["Sum:"] += write_bytes
+			if (mode == "data") {
+				key_read["Sum:"] += read_bytes
+				key_write["Sum:"] += write_bytes
+			} else if (mode == "meta") {
+				key_reqs["Sum:"] += reqs
+				key_qlen["Sum:"] += qlen
+			}
 		}
-		key_read[key] = read_bytes
-		key_write[key] = write_bytes
+		if (mode == "data") {
+			key_read[key] = read_bytes
+			key_write[key] = write_bytes
+		} else if (mode == "meta") {
+			if (view == "SERVER") {
+				key_reqs[key] = reqs
+				key_qlen[key] = qlen
+			} else {
+				key_stat[key] = stat
+				key_statLI[key] = statLI
+			}
+		}
 
 		return 1
 	}
 
-	function humanize(value,        raw, n, suffix, suffixes)
+	function humanize(value,
+		raw, n, suffix, suffixes, div, fmt, unit)
 	{
 		raw = value
+		if (mode == "data") {
+			div = 1024
+			fmt = "%'"'"'.2f%s%s"
+			unit = show_basic ? "B" : "B/s"
+		} else if (mode == "meta") {
+			div = 1000
+			fmt = "%'"'"'.1f%s%s"
+			unit = show_basic ? "" : "/s"
+		}
 		n = split(",K,M,G,T,E", suffixes, /,/)
 		for (suffix = 1; suffix <= n; suffix++) {
-			if (int(value) < 1024) break
-			value /= 1024
+			if (int(value) < div) break
+			value /= div
 		}
 		if (v ~ /\./) sub(/\.?0+$/, "", v)
-		value = sprintf("%'"'"'.2f%s%s", value, suffixes[suffix],
-			show_bytes ? "B" : "B/s")
+		value = sprintf(fmt, value, suffixes[suffix], unit)
 		return value
 	}
 
@@ -800,6 +962,12 @@ esac
 		read_bar, read_rate, read_total,
 		write_bar, write_rate, write_total,
 		rw_rate, rw_total,
+		reqs_bar, reqs_rate,
+		qlen_bar, qlen_rate,
+		reqlen_rate, reqlen_total,
+		stat_bar, stat_rate,
+		statLI_bar, statLI_rate,
+		stat_all_rate, stat_all_total,
 		_keys_sorted, cred, i, v, r, n, table_rows)
 	{
 		time_delta = interval
@@ -811,52 +979,171 @@ esac
 			if (nsamples != 1) return
 		}
 
-		read_total = key_read["Sum:"]
-		read_rate = read_total / interval
-		read_bar = ""
+		if (data_mode) {
+			read_total = key_read["Sum:"]
+			read_rate = read_total / time_delta
+			read_bar = ""
 
-		write_total = key_write["Sum:"]
-		write_rate = write_total / time_delta
-		write_bar = ""
+			write_total = key_write["Sum:"]
+			write_rate = write_total / time_delta
+			write_bar = ""
 
-		rw_total = read_total + write_total
-		rw_rate = rw_total / time_delta
+			rw_total = read_total + write_total
+			rw_rate = rw_total / time_delta
+		} else if (meta_mode) {
+			if (view == "SERVER") {
+				reqs_total = key_reqs["Sum:"]
+				reqs_rate = reqs_total / time_delta
+				reqs_bar = ""
+
+				qlen_total = key_reqs["Sum:"]
+				qlen_rate = qlen_total / time_delta
+				qlen_bar = ""
+
+				reqlen_total = reqs_total + qlen_total
+				reqlen_rate = reqlen_total / time_delta
+			} else {
+				stat_total = key_stat["Sum:"]
+				stat_rate = stat_total / time_delta
+				stat_bar = ""
+
+				statLI_total = key_statLI["Sum:"]
+				statLI_rate = statLI_total / time_delta
+				statLI_bar = ""
+
+				stat_all_total = stat_total + statLI_total
+				stat_all_rate = stat_all_total / time_delta
+			}
+		}
 
 		if (output_json) {
 			json_out = ""
 			json_out = json_add_uint(json_out, "time", tm)
 			json_out = json_add_str(json_out,
 				"ident", "total_" curview)
-			json_out = json_add_uint(json_out,
-				"total_bytes", rw_total)
-			json_out = json_add_float(json_out,
-				"total_rate", rw_rate)
-			json_out = json_add_uint(json_out,
-				"read_bytes", read_total)
-			json_out = json_add_float(json_out,
-				"read_rate", read_rate)
-			json_out = json_add_uint(json_out,
-				"write_bytes", write_total)
-			json_out = json_add_float(json_out,
-				"write_rate", write_rate)
+			if (data_mode) {
+				json_out = json_add_uint(json_out,
+					"total_bytes", rw_total)
+				json_out = json_add_float(json_out,
+					"total_rate", rw_rate)
+				json_out = json_add_uint(json_out,
+					"read_bytes", read_total)
+				json_out = json_add_float(json_out,
+					"read_rate", read_rate)
+				json_out = json_add_uint(json_out,
+					"write_bytes", write_total)
+				json_out = json_add_float(json_out,
+					"write_rate", write_rate)
+			} else if (meta_mode) {
+				if (view == "SERVER") {
+					json_out = json_add_uint(json_out,
+						"reqlen_total", reqlen_total)
+					json_out = json_add_float(json_out,
+						"reqlen_rate", reqlen_rate)
+					json_out = json_add_uint(json_out,
+						"reqs_total", reqs_total)
+					json_out = json_add_float(json_out,
+						"reqs_rate", reqs_rate)
+					json_out = json_add_uint(json_out,
+						"qlen_total", qlen_total)
+					json_out = json_add_float(json_out,
+						"qlen_rate", qlen_rate)
+				} else {
+					json_out = json_add_uint(json_out,
+						"stat_all_total",
+						stat_all_total)
+					json_out = json_add_float(json_out,
+						"stat_all_rate",
+						stat_all_rate)
+					json_out = json_add_uint(json_out,
+						"stat_total", stat_total)
+					json_out = json_add_float(json_out,
+						"stat_rate", stat_rate)
+					json_out = json_add_uint(json_out,
+						"statLI_total", statLI_total)
+					json_out = json_add_float(json_out,
+						"statLI_rate", statLI_rate)
+				}
+			}
 			buffer_add("{" json_out "}\n")
-		} else if (show_bytes) {
+		} else if (show_basic && mode == "data") {
 			# ST: VIEWS
-			buffer_add1("total", humanize(rw_total),
+			buffer_add1("total",
+				humanize(rw_total),
 				humanize(read_total), read_bar,
 				write_bar, humanize(write_total))
-		} else {
+		} else if (show_basic && mode == "meta") {
 			# ST: VIEWS
-			buffer_add1("total", humanize(rw_rate),
-				humanize(read_rate), read_bar,
-				write_bar, humanize(write_rate))
+			if (view == "SERVER") {
+				buffer_add1("total",
+					humanize(reqlen_total),
+					humanize(reqs_total),
+					reqs_bar, qlen_bar,
+					humanize(qlen_total))
+			} else {
+				buffer_add1("total",
+					humanize(stat_all_total),
+					humanize(stat_total),
+					stat_bar, statLI_bar,
+					humanize(statLI_total))
+			}
+		} else if (mode == "data") {
+			# ST: VIEWS
+			buffer_add1("total",
+				humanize(rw_rate),
+				humanize(read_rate),
+				read_bar, write_bar,
+				humanize(write_rate))
+		} else if (mode == "meta") {
+			# ST: VIEWS
+			if (view == "SERVER") {
+				buffer_add1("total",
+					humanize(reqlen_rate),
+					humanize(reqs_rate),
+					reqs_bar, qlen_bar,
+					humanize(qlen_rate))
+			} else {
+				buffer_add1("total",
+					humanize(stat_all_rate),
+					humanize(stat_rate),
+					stat_bar, statLI_bar,
+					humanize(statLI_rate))
+			}
 		}
 
 		#
 		# Decorate combined read/write values
+		# ST: SORTING
 		#
 		for (cred in _keys) {
-			v = int(key_read[cred]) + int(key_write[cred])
+			if (sort == "read") {
+				v = int(key_read[cred])
+			} else if (sort == "write") {
+				v = int(key_write[cred])
+			} else if (sort == "stat") {
+				v = int(key_stat[cred])
+			} else if (sort == "statLI") {
+				v = int(key_statLI[cred])
+			} else if (sort == "reqs") {
+				v = int(key_reqs[cred])
+			} else if (sort == "qlen") {
+				v = int(key_qlen[cred])
+			} else { # total
+				v = 0
+				if (data_mode) {
+					v += key_read[cred]
+					v += key_write[cred]
+				} else if (meta_mode) {
+					if (view == "SERVER") {
+						v += key_reqs[cred]
+						v += key_qlen[cred]
+					} else {
+						v += key_stat[cred]
+						v += key_statLI[cred]
+					}
+				}
+				v = int(v)
+			}
 			_keys[cred] = sprintf("%99d %s", v, cred)
 		}
 
@@ -870,49 +1157,128 @@ esac
 			debug2("r=[%d] table_rows=[%d]", r, table_rows)
 			cred = _keys_sorted[i]
 			sub(/^ *[^ ]+ +/, "", cred) # Undecorate
-			r += process_cred(curview, cred,
-				read_total, write_total)
+			r += process_cred(curview, cred)
 		}
 		if (more = i > 0) buffer_add(sprintf("%s(%d more) ... %s",
 			color ? inv bold yellow : "", i,
 			color ? noinv nobold fgreset : ""))
 	}
 
-	function process_cred(curview, cred, read_total, write_total,
+	function process_cred(curview, cred,
+		read_total, write_total,
 		cred_read, read_bar, read_bar_pct, read_bar_size, read_rate,
 		cred_write, write_bar, write_bar_pct, write_bar_size,
-		write_rate, cred_rw, rw_rate, pch)
+		write_rate, cred_rw, rw_rate, pch,
+		stat_total, statLI_total,
+		cred_stat, stat_bar, stat_bar_pct, stat_bar_size, stat_rate,
+		cred_statLI, statLI_bar, statLI_bar_pct, statLI_bar_size,
+		statLI_rate, cred_stat_all, stat_all_rate,
+		reqs_total, qlen_total,
+		cred_reqs, reqs_bar, reqs_bar_pct, reqs_bar_size, reqs_rate,
+		cred_qlen, qlen_bar, qlen_bar_pct, qlen_bar_size, qlen_rate,
+		cred_reqlen, reqlen_rate)
 	{
 		if (cred == "Sum:") return 0
 		pch = "="
 		debug1("-> process_cred(curview = %s, ...)", curview)
 		debug1("+ cred=[%s]", cred)
 
-		cred_read = key_read[cred]
-		cred_write = key_write[cred]
-		cred_rw = cred_read + cred_write
+		if (data_mode) {
+			read_total = key_read["Sum:"]
+			write_total = key_write["Sum:"]
 
-		read_rate = cred_read / time_delta
-		if (read_total > 0)
-			read_bar_pct = cred_read / read_total
-		else
-			read_bar_pct = 0
-		read_bar_size = bar_size * read_bar_pct
-		read_bar = sprintf("%*s", read_bar_size, "")
-		gsub(/ /, pch, read_bar)
-		sub(/.$/, ">", read_bar)
+			cred_read = key_read[cred]
+			cred_write = key_write[cred]
+			cred_rw = cred_read + cred_write
 
-		write_rate = cred_write / time_delta
-		if (write_total > 0)
-			write_bar_pct = cred_write / write_total
-		else
-			write_bar_pct = 0
-		write_bar_size = bar_size * write_bar_pct
-		write_bar = sprintf("%*s", write_bar_size, "")
-		gsub(/ /, pch, write_bar)
-		sub(/^./, "<", write_bar)
+			read_rate = cred_read / time_delta
+			if (read_total > 0)
+				read_bar_pct = cred_read / read_total
+			else
+				read_bar_pct = 0
+			read_bar_size = bar_size * read_bar_pct
+			read_bar = sprintf("%*s", read_bar_size, "")
+			gsub(/ /, pch, read_bar)
+			sub(/.$/, ">", read_bar)
 
-		rw_rate = cred_rw / time_delta
+			write_rate = cred_write / time_delta
+			if (write_total > 0)
+				write_bar_pct = cred_write / write_total
+			else
+				write_bar_pct = 0
+			write_bar_size = bar_size * write_bar_pct
+			write_bar = sprintf("%*s", write_bar_size, "")
+			gsub(/ /, pch, write_bar)
+			sub(/^./, "<", write_bar)
+		} else if (meta_mode) {
+			if (view == "SERVER") {
+				reqs_total = key_reqs["Sum:"]
+				qlen_total = key_qlen["Sum:"]
+
+				cred_reqs = key_reqs[cred]
+				cred_qlen = key_qlen[cred]
+				cred_reqlen = cred_reqs + cred_qlen
+
+				reqs_rate = cred_reqs / time_delta
+				if (reqs_total > 0)
+					reqs_bar_pct = cred_reqs / reqs_total
+				else
+					reqs_bar_pct = 0
+				reqs_bar_size = bar_size * reqs_bar_pct
+				reqs_bar = sprintf("%*s", reqs_bar_size, "")
+				gsub(/ /, pch, reqs_bar)
+				sub(/.$/, ">", reqs_bar)
+
+				qlen_rate = creed_qlen / time_delta
+				if (qlen_total > 0)
+					qlen_bar_pct = cred_qlen / qlen_total
+				else
+					qlen_bar_pct = 0
+				qlen_bar_size = bar_size * qlen_bar_pct
+				qlen_bar = sprintf("%*s", qlen_bar_size, "")
+				gsub(/ /, pch, qlen_bar)
+				sub(/^./, "<", qlen_bar)
+			} else {
+				stat_total = key_stat["Sum:"]
+				statLI_total = key_statLI["Sum:"]
+
+				cred_stat = key_stat[cred]
+				cred_statLI = key_statLI[cred]
+				cred_stat_all = cred_stat + cred_statLI
+
+				stat_rate = cred_stat / time_delta
+				if (stat_total > 0)
+					stat_bar_pct = cred_stat / stat_total
+				else
+					stat_bar_pct = 0
+				stat_bar_size = bar_size * stat_bar_pct
+				stat_bar = sprintf("%*s", stat_bar_size, "")
+				gsub(/ /, pch, stat_bar)
+				sub(/.$/, ">", stat_bar)
+
+				statLI_rate = cred_statLI / time_delta
+				if (statLI_total > 0) {
+					statLI_bar_pct = cred_statLI
+					statLI_bar_pct /= statLI_total
+				} else
+					statLI_bar_pct = 0
+				statLI_bar_size = bar_size * statLI_bar_pct
+				statLI_bar = sprintf("%*s",
+					statLI_bar_size, "")
+				gsub(/ /, pch, statLI_bar)
+				sub(/^./, "<", statLI_bar)
+			}
+		}
+
+		if (data_mode) {
+			rw_rate = cred_rw / time_delta
+		} else if (meta_mode) {
+			if (view == "SERVER") {
+				reqlen_rate = cred_reqlen / time_delta
+			} else {
+				stat_all_rate = cred_stat_all / time_delta
+			}
+		}
 		if (output_json) {
 			# ST: JSONDATA
 			json_out = ""
@@ -929,29 +1295,89 @@ esac
 					cred = get_random(length(cred))
 			}
 			json_out = json_add_str(json_out, curview, cred)
-			json_out = json_add_uint(json_out,
-				"total_bytes", cred_rw)
-			json_out = json_add_float(json_out,
-				"total_rate", rw_rate)
-			json_out = json_add_uint(json_out,
-				"read_bytes", cred_read)
-			json_out = json_add_float(json_out,
-				"read_rate", read_rate)
-			json_out = json_add_uint(json_out,
-				"write_bytes", cred_write)
-			json_out = json_add_float(json_out,
-				"write_rate", write_rate)
+			if (data_mode) {
+				json_out = json_add_uint(json_out,
+					"total_bytes", cred_rw)
+				json_out = json_add_float(json_out,
+					"total_rate", rw_rate)
+				json_out = json_add_uint(json_out,
+					"read_bytes", cred_read)
+				json_out = json_add_float(json_out,
+					"read_rate", read_rate)
+				json_out = json_add_uint(json_out,
+					"write_bytes", cred_write)
+				json_out = json_add_float(json_out,
+					"write_rate", write_rate)
+			} else if (meta_mode) {
+				if (view == "SERVER") {
+					json_out = json_add_uint(json_out,
+						"reqlen_total", cred_reqlen)
+					json_out = json_add_float(json_out,
+						"reqlen_rate", reqlen_rate)
+					json_out = json_add_uint(json_out,
+						"reqs_total", cerd_reqs)
+					json_out = json_add_float(json_out,
+						"reqs_rate", reqs_rate)
+					json_out = json_add_uint(json_out,
+						"qlen_total", cred_qlen)
+					json_out = json_add_float(json_out,
+						"qlen_rate", qlen_rate)
+				} else {
+					json_out = json_add_uint(json_out,
+						"stat_all_total",
+						cred_stat_all)
+					json_out = json_add_float(json_out,
+						"stat_all_rate",
+						stat_all_rate)
+					json_out = json_add_uint(json_out,
+						"stat_total", cred_stat)
+					json_out = json_add_float(json_out,
+						"stat_rate", stat_rate)
+					json_out = json_add_uint(json_out,
+						"statLI_total", cred_statLI)
+					json_out = json_add_float(json_out,
+						"statLI_rate", statLI_rate)
+				}
+			}
 			buffer_add("{" json_out "}\n")
-		} else if (show_bytes) {
+		} else if (show_basic && mode == "data") {
 			# ST: VIEWDATA
-			buffer_add1(cred, humanize(cred_rw),
+			buffer_add1(cred,
+				humanize(cred_rw),
 				humanize(cred_read), read_bar,
 				write_bar, humanize(cred_write))
-		} else {
+		} else if (show_basic && mode == "meta") {
 			# ST: VIEWDATA
-			buffer_add1(cred, humanize(rw_rate),
+			if (view == "SERVER") {
+				buffer_add1(cred,
+					humanize(cred_reqlen),
+					humanize(cred_reqs), reqs_bar,
+					qlen_bar, humanize(cred_qlen))
+			} else {
+				buffer_add1(cred,
+					humanize(cred_stat_all),
+					humanize(cred_stat), stat_bar,
+					statLI_bar, humanize(cred_statLI))
+			}
+		} else if (mode == "data") {
+			# ST: VIEWDATA
+			buffer_add1(cred,
+				humanize(rw_rate),
 				humanize(read_rate), read_bar,
 				write_bar, humanize(write_rate))
+		} else if (mode == "meta") {
+			# ST: VIEWDATA
+			if (view == "SERVER") {
+				buffer_add1(cred,
+					humanize(reqlen_rate),
+					humanize(reqs_rate), reqs_bar,
+					qlen_bar, humanize(qlen_rate))
+			} else {
+				buffer_add1(cred,
+					humanize(stat_all_rate),
+					humanize(stat_rate), stat_bar,
+					statLI_bar, humanize(statLI_rate))
+			}
 		}
 
 		return 1
@@ -977,7 +1403,15 @@ esac
 
 	/^===/ { # Data start
 		tm = _systime()
-		read_total = write_total = 0
+		if (data_mode) {
+			read_total = write_total = 0
+		} else if (meta_mode) {
+			if (view == "SERVER") {
+				reqs_total = qlen_total = 0
+			} else {
+				stat_total = statLI_total = 0
+			}
+		}
 		clear_data()
 		clear_buffer()
 		next
