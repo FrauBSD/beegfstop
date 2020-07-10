@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 7.0
+Version: 7.0.1
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Tue Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0.1-1
+- e34ccfe Fix byte counts when using -j with -s
 * Tue Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0-1
 - 341c8e1 New major version
 * Mon Jul  6 2020 Devin Teske <dteske@fraubsd.org> 6.0-1
