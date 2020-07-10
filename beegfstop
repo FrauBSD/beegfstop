@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-09 13:41:57 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-09 18:22:01 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 7.0 $'
+VERSION='$Version: 7.0.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -1007,7 +1007,7 @@ esac
 	#
 
 	function parse_line(        key, value1, value2, kprop, value,
-		mul, n, f)
+		mul, n, f, v)
 	{
 		# ST: CTLDATA
 		sub(/\r$/, "")
@@ -1033,10 +1033,9 @@ esac
 				# NB: Server mode gives no sum, create one
 				for (n = 1; n <= njson_fields; n++) {
 					f = json_field_name[n]
-					kv_sum(json_key[f],
-						"Sum:", $json_field[f])
-					kv_sum(json_key[f],
-						key, $json_field[f])
+					v = $json_field[f] * mul
+					kv_sum(json_key[f], "Sum:", v)
+					kv_sum(json_key[f], key, v)
 				}
 			} else {
 				value1 = $labels["field1"] * mul
