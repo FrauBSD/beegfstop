@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 7.0.2
+Version: 7.0.3
 Release: 1
 Buildarch: noarch
 
@@ -77,11 +77,13 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
-* Tue Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0.2-1
+* Fri Jul 10 2020 Devin Teske <dteske@fraubsd.org> 7.0.2-1
+- 5f1749f For --userstats replace --names with getent+cache
+* Wed Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0.2-1
 - fe796aa Fix regression in JSON field name for read/write data rates
-* Tue Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0.1-1
+* Wed Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0.1-1
 - e34ccfe Fix byte counts when using -j with -s
-* Tue Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0-1
+* Wed Jul  8 2020 Devin Teske <dteske@fraubsd.org> 7.0-1
 - 341c8e1 New major version
 * Mon Jul  6 2020 Devin Teske <dteske@fraubsd.org> 6.0-1
 - a8c1dbd Add -m for metadata and -k for sorting
