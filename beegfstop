@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-09 19:20:40 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-10 15:39:47 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 7.0.2 $'
+VERSION='$Version: 7.0.3 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -145,13 +145,16 @@ run_beegfs_ctl()
 	data) set -- --nodetype=storage "$@" ;;
 	meta) set -- --nodetype=meta "$@" ;;
 	esac
-	[ "$NO_NAMES" ] || set -- --names "$@"
 	if [ "$VIEW_CLIENT" ]; then
+		[ "$NO_NAMES" ] || set -- --names "$@"
 		set -- --clientstats ${MODE_DATA:+--rwunit=B} "$@"
 		set -- --interval=$INTERVAL --perinterval "$@"
 	elif [ "$VIEW_SERVER" ]; then
+		[ "$NO_NAMES" ] || set -- --names "$@"
 		set -- --serverstats --perserver --interval=1 "$@"
 	elif [ "$VIEW_USER" ]; then
+		# NB: --names has a bug; we need to avoid using it
+		# NB: UID->name mapping/caching done in post-processing
 		set -- --userstats ${MODE_DATA:+--rwunit=B} "$@"
 		set -- --interval=$INTERVAL --perinterval "$@"
 	fi
@@ -527,12 +530,14 @@ esac
 			unredacted_servers = "^(SERVER|total|\\*)$"
 		}
 
+		# Declare arrays
+		delete labels
+		delete lorder
+		delete uid2name_cache
+
 		#
 		# ST: VIEWS
 		#
-
-		delete labels
-		delete lorder
 
 		if (view == "SERVER") {
 			labels["name"] = no_names ? 1 : "NF"
@@ -1008,11 +1013,30 @@ esac
 	# Data parsing
 	#
 
+	function uid2name(uid,        cmd, id, idf, name)
+	{
+		if (uid in uid2name_cache)
+			return uid2name_cache[uid]
+		(cmd = sprintf("getent passwd %d", uid)) | getline id
+		close(cmd)
+		name = split(id, idf, /:/) < 3 ? uid : idf[1]
+		if (name == "") name = uid
+		return uid2name_cache[uid] = name
+	}
+
 	function parse_line(        key, value1, value2, kprop, value,
 		mul, n, f, v)
 	{
 		# ST: CTLDATA
-		sub(/\r$/, "")
+
+		sub(/\r$/, "") # NB: Data comes in CRLF format (sigh)
+
+		#
+		# NB: Fix missing whitespace between sum and name
+		# NB: An IPv4 addr is not long enough to trigger this bug,
+		#     and hostnames cannot end in a number, so insert the
+		#     space at the point where they meet.
+		#
 		if (match($0, /[^[:space:][:digit:]][[:digit:]]+ \[sum\]/)) {
 			$0 = substr($0, 1, RSTART) " " substr($0, RSTART + 1)
 		}
@@ -1022,6 +1046,15 @@ esac
 		#
 
 		key = labels["name"] == "NF" ? $NF : $labels["name"]
+
+		# Map UID to name unless disabled (-n)
+		if (view == "USER" && !no_names) {
+			if (debugger > 2) {
+				debug2("Mapped UID %d to \"%s\"",
+					key, uid2name(key))
+			}
+			key = uid2name(key)
+		}
 
 		value1 = value2 = 0
 		if (view == "SERVER") {
@@ -1395,16 +1428,6 @@ esac
 		next
 	}
 
-	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { # Data
-		parse_line()
-		next
-	}
-
-	view != "SERVER" && /^[^-=[:space:]]/ && $1 !~ /\|/ { # Data
-		parse_line()
-		next
-	}
-
 	/^---$/ { # Data end
 		if (view == "SERVER") {
 			if (subsamples_left-- > 1) next
@@ -1418,6 +1441,16 @@ esac
 		#
 		print_buffer()
 		sample_check() # Exit if no more samples desired
+		next
+	}
+
+	view == "SERVER" && /^[[:space:]]*[[:digit:]]/ { # Data
+		parse_line()
+		next
+	}
+
+	view != "SERVER" && /^[^=[:space:]]/ && $1 !~ /\|/ { # Data
+		parse_line()
 		next
 	}
 
