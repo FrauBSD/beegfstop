@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-09 18:22:01 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-09 19:20:40 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 7.0.1 $'
+VERSION='$Version: 7.0.2 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -542,8 +542,10 @@ esac
 
 		o = 0
 		if (data_mode) {
-			kv_map3("read", "B-rd", "read_bytes", 3)
-			kv_map3("write", "B-wr", "write_bytes", 2)
+			kv_map4("read", "B-rd",
+				"read_bytes", 3, "read_rate")
+			kv_map4("write", "B-wr",
+				"write_bytes", 2, "write_rate")
 
 			lorder[++o] = "read"
 			lorder[++o] = "write"
@@ -845,7 +847,7 @@ esac
 	#
 
 	function idx(p1, p2) { return (p2 == "" ? p1 : p1 " " p2) }
-	function kv_map(x, field) { kv_map3(x, x, x, field) }
+	function kv_map(x, field) { kv_map4(x, x, x, field) }
 
 	function clear_data()
 	{
@@ -853,13 +855,13 @@ esac
 		delete key_value
 	}
 
-	function kv_map3(x, prop, key, field)
+	function kv_map4(x, prop, key, field, rate)
 	{
 		json_fields[x]
 		json_field[x] = int(field) # SERVER mode (-s)
 		json_prop[x] = prop == "" ? x : prop
 		json_key[x] = key == "" ? x : key
-		json_rate[x] = key "_rate"
+		json_rate[x] = rate == "" ? key "_rate" : rate
 	}
 
 	function kv_ord(nelements, list,        n)
