@@ -4,13 +4,13 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-10 18:04:09 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-15 15:08:00 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
 # In beegfstop, a ``view'' is the user's choice between -c, -s, or -u.
-# For example, `-u' asks beegfstop to display the ``user view'' where statistics
-# displayed are on a per-user basis.
+# For example, `-u' asks beegfstop to display the ``user view'' where
+# statistics-displayed are on a per-user basis.
 #
 # The ``mode'' is the user's choice between viewing data input/output (this is
 # the default) and metadata operations (-m).
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 7.0.4 $'
+VERSION='$Version: 8.0 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -63,9 +63,10 @@ FAILURE=1
 # Command-line options
 #
 COLOR=1					# -C
-DEBUGGER=				# -D
+DATA_METRIC=				# -D metric[,metric]
+DEBUGGER=				# -d
 INTERVAL=$DEFAULT_INTERVAL		# -i sec
-META_METRIC=				# -M metric
+META_METRIC=				# -M metric[,metric]
 MODE=data				# vs `meta' (-m)
 NO_NAMES=				# -n
 NSAMPLES=				# -N num
@@ -85,9 +86,11 @@ WIDE_VIEW=				# -w
 #
 CONS=1
 [ -t 1 ] || CONS= COLOR= # stdout is not a tty
+METRIC_LIST=
 MODE_DATA=
 MODE_META=
 VIEW=
+_METRIC_LIST=
 
 ############################################################ FUNCTIONS
 
@@ -117,13 +120,15 @@ usage()
 	printf "$optfmt" "-b" "Show basic counts instead of rates."
 	printf "$optfmt" "-C" "Always enable color."
 	printf "$optfmt" "-c" "View read/write activity by client."
-	printf "$optfmt" "-D" "Enable debugger."
+	printf "$optfmt" "-d" \
+		"Enable debugger. Repeat for mode debugging (4 max)."
 	printf "$optfmt" "-h" "Print usage statement and exit."
 	printf "$optfmt" "-i sec" \
 		"Set interval seconds. Default \`$DEFAULT_INTERVAL'."
 	printf "$optfmt" "-j" "Output JSON formatted data."
 	printf "$optfmt" "-k col" "Sort column (default \`$DEFAULT_SORT')."
 	printf "$optfmt" "-M metric" "Show metadata metric."
+	printf "$optfmt" "" "Optionally \`metricA,metricB' to compare metrics."
 	printf "$optfmt" "-m" "Show metadata statistics."
 	printf "$optfmt" "-N num" "Perform num samples and exit."
 	printf "$optfmt" "-n" "Do not attempt to map uid/gid/ip to names."
@@ -199,12 +204,14 @@ resize()
 #
 # Process command-line options
 #
-while getopts bCcDhi:jk:M:mN:noRrsuVvw flag; do
+while getopts bCcD:dhi:jk:M:mN:noRrsuVvw flag; do
 	case "$flag" in
 	b) SHOW_BASIC=1 ;;
 	C) COLOR=1 ;;
 	c) VIEW=CLIENT VIEW_CLIENT=1 ;;
-	D) DEBUGGER=$(( $DEBUGGER + 1 )) ;;
+	D) [ "$MODE" = data ] || die "-D metric cannot be combined with -m/-M"
+	   DATA_METRIC="$OPTARG" MODE=data ;;
+	d) DEBUGGER=$(( $DEBUGGER + 1 )) ;;
 	i) INTERVAL="$OPTARG" ;;
 	j) OUTPUT_JSON=1 ;;
 	k) SORT="$OPTARG" ;;
@@ -237,13 +244,21 @@ shift $(( $OPTIND - 1 ))
 # Prevent non-functional option combinations
 #
 if [ "$META_METRIC" ]; then
+	[ "$MODE" = meta ] || die "-m/-M cannot be combined with -D metric"
 	[ ! "$OUTPUT_JSON" ] || die "-M metric cannot be combined with -j"
+fi
+if [ "$DATA_METRIC" ]; then
+	[ "$MODE" = data ] || die "-D metric cannot be combined with -m/-M"
+	[ ! "$OUTPUT_JSON" ] || die "-D metric cannot be combined with -j"
 fi
 if [ "$SHOW_BASIC" ]; then
 	[ ! "$OUTPUT_JSON" ] || die "-b cannot be combined with -j"
+	[ "$VIEW" != "SERVER" ] || [ "$MODE" != meta ] ||
+		die "-b cannot be combined with -s and -m"
 fi
 if [ "$SHOW_ZERO_VALUES" ]; then
-	[ "$OUTPUT_JSON" ] || die "-V only applies to -j"
+	[ "$OUTPUT_JSON" ] || [ $DEBUGGER -ge 4 ] ||
+		die "-V only applies to -j or -dddd"
 fi
 
 #
@@ -271,29 +286,247 @@ esac
 # Validate `-M metric' option
 #
 if [ "$VIEW_USER" -o "$VIEW_CLIENT" ]; then
-	case "$META_METRIC" in
-	"") META_METRIC=stat ;;
-	[Ss][Tt][Aa][Tt]|[Ss][Tt][Aa][Tt][Ll][Ii]) META_METRIC=stat ;;
-	[Cc][Rr][Ee][Aa][Tt][Ee]) META_METRIC=create ;;
-	[Cc][Rr][Ee][Aa][Tt][Ee][Ll][Ii]) META_METRIC=create ;;
-	[Rr][Mm]|[Rr][Mm][Dd][Ii][Rr]|[Uu][Nn][Ll][Nn][Kk]) META_METRIC=rm ;;
-	[Ff][Dd]|[Oo][Pp][Ee][Nn]|[Cc][Ll][Oo][Ss][Ee]) META_METRIC=fd ;;
-	*) die "-M metric must be one of (%s):\n\t%s\n\t%s\n\t%s\n\t%s" \
-		"case-insensitive" \
-		"\`stat' or \`statLI' (default pair to show)" \
-		"\`create' or \`createLI'" \
-		"\`rm' or \`rmdir' or \`unlink'" \
-		"\`fd' or \`open' or \`close'"
-	esac
+	if [ "$META_METRIC" != "${META_METRIC#*,}" ]; then
+		# Metric contains a comma, validate each separately
+		METRIC_LIST="${META_METRIC%%,*} ${META_METRIC#*,}"
+
+		for metric in $METRIC_LIST; do
+			case "$metric" in
+			# Alphabetically sorted
+			"") metric= ;; # blank column
+			[Aa][Cc][Kk]) metric=ack ;;
+			[Cc][Ll][Oo][Ss][Ee]) metric=close ;;
+			[Cc][Rr][Ee][Aa][Tt][Ee]) metric=create ;;
+			[Cc][Rr][Ee][Aa][Tt][Ee][Ll][Ii]) metric=createLI ;;
+			[Dd][Ii][Rr][Pp][Aa][Rr][Ee][Nn][Tt])
+				metric=dirparent ;;
+			[Ee][Nn][Tt][Ii][Nn][Ff]) metric=entInf ;;
+			[Gg][Ee][Tt][Xx][Aa]) metric=getXA ;;
+			[Hh][Aa][Rr][Dd][Ll][Nn][Kk]) metric=hardlnk ;;
+			[Mm][Dd][Ss][Ii][Nn][Ff]) metric=mdsInf ;;
+			[Mm][Ii][Rr][Rr][Oo][Rr]) metric=mirror ;;
+			[Mm][Kk][Dd][Ii][Rr]) metric=mkdir ;;
+			[Nn][Oo][Dd][Ee][Ii][Nn][Ff]) metric=nodeInf ;;
+			[Oo][Pp][Ee][Nn]) metric=open ;;
+			[Rr][Dd][Dd][Ii][Rr]) metric=rddir ;;
+			[Rr][Ee][Nn]) metric=ren ;;
+			[Rr][Ee][Vv][Aa][Ll][Ll][Ii]) metric=revalLI ;;
+			[Rr][Mm][Dd][Ii][Rr]) metric=rmdir ;;
+			[Ss][Aa][Tt][Tt][Rr]) metric=sAttr ;;
+			[Ss][Cc][Hh][Dd][Rr][Cc][Tt]) metric=sChDrct ;;
+			[Ss][Tt][Aa][Tt]) metric=stat ;;
+			[Ss][Tt][Aa][Tt][Ff][Ss]) metric=statfs ;;
+			[Ss][Tt][Aa][Tt][Ll][Ii]) metric=statLI ;;
+			[Ss][Uu][Mm]) metric=sum ;;
+			[Tt][Rr][Uu][Nn][Cc]) metric=trunc ;;
+			[Uu][Nn][Ll][Nn][Kk]) metric=unlnk ;;
+			*) exec >&2
+				printf "%s: -M unknown value \`%s'\n" \
+					"$pgm" "$metric"
+				printf "%s must be one of (%s):\n" \
+					"-M metric[,metric]" "case-insensitive"
+				printf "\tack close create createLI dirparent"
+				printf " entInf getXA hardlnk mdsInf mirror\n"
+				printf "\tmkdir nodeInf open rddir ren revalLI"
+				printf " rmdir sAttr sChDrct stat statfs\n"
+				printf "\tstatLI sum trunc unlnk\n"
+				die
+			esac
+			_METRIC_LIST="$_METRIC_LIST,$metric"
+		done
+		METRIC_LIST="${_METRIC_LIST#,}"
+	elif [ "$MODE" = meta ]; then
+		# A single metric or pair of metrics has been requested
+		case "$META_METRIC" in
+		"") META_METRIC=stat ;;
+		[Ss][Tt][Aa][Tt]|[Ss][Tt][Aa][Tt][Ll][Ii])
+			META_METRIC=stat ;;
+		[Cc][Rr][Ee][Aa][Tt][Ee]) META_METRIC=create ;;
+		[Cc][Rr][Ee][Aa][Tt][Ee][Ll][Ii]) META_METRIC=create ;;
+		[Rr][Mm]|[Rr][Mm][Dd][Ii][Rr]|[Uu][Nn][Ll][Nn][Kk])
+			META_METRIC=rm ;;
+		[Ff][Dd]|[Oo][Pp][Ee][Nn]|[Cc][Ll][Oo][Ss][Ee])
+			META_METRIC=fd ;;
+		# Alphabetical beyond this point
+		[Aa][Cc][Kk]) META_METRIC=ack ;;
+		[Dd][Ii][Rr][Pp][Aa][Rr][Ee][Nn][Tt]) META_METRIC=dirparent ;;
+		[Ee][Nn][Tt][Ii][Nn][Ff]) META_METRIC=entInf ;;
+		[Gg][Ee][Tt][Xx][Aa]) META_METRIC=getXA ;;
+		[Hh][Aa][Rr][Dd][Ll][Nn][Kk]) META_METRIC=hardlnk ;;
+		[Mm][Dd][Ss][Ii][Nn][Ff]) META_METRIC=mdsInf ;;
+		[Mm][Ii][Rr][Rr][Oo][Rr]) META_METRIC=mirror ;;
+		[Mm][Kk][Dd][Ii][Rr]) META_METRIC=mkdir ;;
+		[Nn][Oo][Dd][Ee][Ii][Nn][Ff]) META_METRIC=nodeInf ;;
+		[Rr][Dd][Dd][Ii][Rr]) META_METRIC=rddir ;;
+		[Rr][Ee][Nn]) META_METRIC=ren ;;
+		[Rr][Ee][Vv][Aa][Ll][Ll][Ii]) META_METRIC=revalLI ;;
+		[Ss][Aa][Tt][Tt][Rr]) META_METRIC=sAttr ;;
+		[Ss][Cc][Hh][Dd][Rr][Cc][Tt]) META_METRIC=sChDrct ;;
+		[Ss][Tt][Aa][Tt][Ff][Ss]) META_METRIC=statfs ;;
+		[Ss][Uu][Mm]) META_METRIC=sum ;;
+		[Tt][Rr][Uu][Nn][Cc]) META_METRIC=trunc ;;
+		*) exec >&2
+			printf "%s: -M unknown value \`%s'\n" \
+				"$pgm" "$META_METRIC"
+			printf "%s metric must be one of (%s):\n" \
+				"-M" "case-insensitive"
+			printf "\tstat or statLI (default pair shown)\n"
+			printf "\tcreate or createLI\n"
+			printf "\tfd or open or close\n"
+			printf "\trm or rmdir or unlink\n"
+			printf "or any of (also case-insensitive):\n"
+			printf "\tack dirparent entInf getXA hardlnk mdsInf"
+			printf " mirror mkdir nodeInf rddir\n"
+			printf "\tren revalLI sAttr sChDrct statfs sum trunc\n"
+			die
+		esac
+	elif [ "$DATA_METRIC" != "${DATA_METRIC#*,}" ]; then
+		# Metric contains a comma, validate each separately
+		METRIC_LIST="${DATA_METRIC%%,*} ${DATA_METRIC#*,}"
+
+		for metric in $METRIC_LIST; do
+			case "$metric" in
+			# Alphabetically sorted
+			"") metric= ;; # blank column
+			[Aa][Cc][Kk]) metric=ack ;;
+			[Bb]-[Rr][Dd]) metric=B-rd ;;
+			[Bb]-[Ww][Rr]) metric=B-wr ;;
+			[Cc][Ll][Oo][Ss][Ee]) metric=close ;;
+			[Gg][Ee][Tt][Ff][Ss][Ii][Zz][Ee]) metric=getFSize ;;
+			[Hh][Rr][Tt][Bb][Ee][Aa][Tt]) metric=hrtbeat ;;
+			[Nn][Oo][Dd][Ee][Ii][Nn][Ff]) metric=nodeInf ;;
+			[Oo][Pp][Ss]-[Rr][Dd]) metric=ops-rd ;;
+			[Oo][Pp][Ss]-[Ww][Rr]) metric=ops-wr ;;
+			[Ss][Uu][Mm]) metric=sum ;;
+			[Tt][Rr][Uu][Nn][Cc]) metric=trunc ;;
+			[Uu][Nn][Ll][Nn][Kk]) metric=unlnk ;;
+			*) exec >&2
+				printf "%s: -D unknown value \`%s'\n" \
+					"$pgm" "$metric"
+				printf "%s must be one of (%s):\n" \
+					"-D metric[,metric]" "case-insensitive"
+				printf "\tack B-rd B-wr close getFSize"
+				printf " hrtbeat nodeInf ops-rd ops-wr sAttr\n"
+				printf "\tsChDrct statfs storInf sum trunc"
+				printf " unlnk\n"
+				die
+			esac
+			_METRIC_LIST="$_METRIC_LIST,$metric"
+		done
+		METRIC_LIST="${_METRIC_LIST#,}"
+	else
+		case "$DATA_METRIC" in
+		"") DATA_METRIC=rw ;;
+		[Rr][Ww]|[Rr][Ee][Aa][Dd]|[Ww][Rr][Ii][Tt][Ee])
+			DATA_METRIC=rw ;;
+		# Alphabetical beyond this point
+		[Aa][Cc][Kk]) DATA_METRIC=ack ;;
+		[Bb]-[Rr][Dd]) DATA_METRIC=B-rd ;;
+		[Bb]-[Ww][Rr]) DATA_METRIC=B-wr ;;
+		[Cc][Ll][Oo][Ss][Ee]) DATA_METRIC=close ;;
+		[Gg][Ee][Tt][Ff][Ss][Ii][Zz][Ee]) DATA_METRIC=getFSize ;;
+		[Hh][Rr][Tt][Bb][Ee][Aa][Tt]) DATA_METRIC=hrtbeat ;;
+		[Nn][Oo][Dd][Ee][Ii][Nn][Ff]) DATA_METRIC=nodeInf ;;
+		[Oo][Pp][Ss]-[Rr][Dd]) DATA_METRIC=ops-rd ;;
+		[Oo][Pp][Ss]-[Ww][Rr]) DATA_METRIC=ops-wr ;;
+		[Ss][Uu][Mm]) DATA_METRIC=sum ;;
+		[Tt][Rr][Uu][Nn][Cc]) DATA_METRIC=trunc ;;
+		[Uu][Nn][Ll][Nn][Kk]) DATA_METRIC=unlnk ;;
+		*) exec >&2
+			printf "%s: -D unknown value \`%s'\n" \
+				"$pgm" "$DATA_METRIC"
+			printf "%s metric must be one of (%s):\n" \
+				"-D" "case-insensitive"
+			printf "\trw or read or write (default shown)\n"
+			printf "or any of (also case-insensitive):\n"
+			printf "\tack B-rd B-wr close getFSize hrtbeat nodeInf"
+			printf " ops-rd ops-wr sAttr\n"
+			printf "\tsChDrct statfs storInf sum trunc unlnk\n"
+			die
+		esac
+	fi
 elif [ "$VIEW_SERVER" ]; then
-	case "$META_METRIC" in
-	"") META_METRIC=bsy ;;
-	[Bb][Ss][Yy]) META_METRIC=bsy ;;
-	[Qq][Ll][Ee][Nn]) META_METRIC=qlen ;;
-	*) die "-M metric must be one of (%s):\n\t%s" \
-		"case-insensitive" \
-		"\`bsy' or \`qlen'"
-	esac
+	if [ "$META_METRIC" != "${META_METRIC#*,}" ]; then
+		# Metric contains a comma, validate each separately
+		METRIC_LIST="${META_METRIC%%,*} ${META_METRIC#*,}"
+
+		for metric in $METRIC_LIST; do
+			case "$metric" in
+			"") metric= ;; # blank column
+			# Alphabetically sorted
+			[Bb][Ss][Yy]) metric=bsy ;;
+			[Qq][Ll][Ee][Nn]) metric=qlen ;;
+			[Rr][Ee][Qq][Ss]) metric=reqs ;;
+			*) exec >&2
+				printf "%s: -M unknown value \`%s'\n" \
+					"$pgm" "$metric"
+				printf "%s metric must be one of (%s):\n" \
+					"-M" "case-insensitive"
+				printf "\tbsy qlen reqs\n"
+				die
+			esac
+			_METRIC_LIST="$_METRIC_LIST,$metric"
+		done
+		METRIC_LIST="${_METRIC_LIST#,}"
+	elif [ "$MODE" = meta ]; then
+		# A single metric or pair of metrics has been requested
+		case "$META_METRIC" in
+		"") META_METRIC=bsy ;;
+		[Bb][Ss][Yy]) META_METRIC=bsy ;;
+		[Qq][Ll][Ee][Nn]) META_METRIC=qlen ;;
+		*) exec >&2
+			printf "%s: -M unknown value \`%s'\n" \
+				"$pgm" "$META_METRIC"
+			printf "%s metric must be one of (%s):\n" \
+				"-M" "case-insensitive"
+			printf "\t\`bsy' or \`qlen'\n"
+			die
+		esac
+	
+	elif [ "$DATA_METRIC" != "${DATA_METRIC#*,}" ]; then
+		# Metric contains a comma, validate each separately
+		METRIC_LIST="${DATA_METRIC%%,*} ${DATA_METRIC#*,}"
+
+		for metric in $METRIC_LIST; do
+			case "$metric" in
+			# Alphabetically sorted
+			"") metric= ;; # blank column
+			[Bb][Ss][Yy]) metric=bsy ;;
+			[Qq][Ll][Ee][Nn]) metric=qlen ;;
+			[Rr][Ee][Aa][Dd]) metric=read ;;
+			[Rr][Ee][Qq][Ss]) metric=reqs ;;
+			[Ww][Rr][Ii][Tt][Ee]) metric=write ;;
+			*) exec >&2
+				printf "%s: -D unknown value \`%s'\n" \
+					"$pgm" "$metric"
+				printf "%s must be one of (%s):\n" \
+					"-D metric[,metric]" "case-insensitive"
+				printf "\tbsy qlen read reqs write\n"
+				die
+			esac
+		done
+		METRIC_LIST="${_METRIC_LIST#,}"
+	else
+		case "$DATA_METRIC" in
+		"") DATA_METRIC=rw ;;
+		[Rr][Ww]|[Rr][Ee][Aa][Dd]|[Ww][Rr][Ii][Tt][Ee])
+			DATA_METRIC=rw ;;
+		# Alphabetical beyond this point
+		[Bb][Ss][Yy]) DATA_METRIC=bsy ;;
+		[Qq][Ll][Ee][Nn]) DATA_METRIC=qlen ;;
+		[Rr][Ee][Aa][Dd]) DATA_METIRC=read ;;
+		[Ww][Rr][Ii][Tt][Ee]) DATA_METRIC=write ;;
+		*) exec >&2
+			printf "%s: -D unknown value \`%s'\n" \
+				"$pgm" "$DATA_METRIC"
+			printf "%s metric must be one of (%s):\n" \
+				"-D" "case-insensitive"
+			printf "\trw or read or write (default shown)\n"
+			printf "or any of (also case-insensitive):\n"
+			printf "\tbsy qlen\n"
+			die
+		esac
+	fi
 fi
 
 #
@@ -335,13 +568,28 @@ elif [ "$MODE" = meta ]; then
 			[Cc][Ll][Oo][Ss][Ee]) SORT=close ;; # CLOSE
 			*) die "-k col must be one of: total open close"
 			esac
-		else
+		elif [ "${META_METRIC:-stat}" = "stat" ]; then
 			case "$SORT" in
 			"") usage "missing -k argument" ;; # NOTREACHED
 			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
 			[Ss][Tt][Aa][Tt]) SORT=stat ;; # STAT
 			[Ss][Tt][Aa][Tt][Ll][Ii]) SORT=statLI ;; # STATLI
 			*) die "-k col must be one of: total stat statLI"
+			esac
+		elif [ "$META_METRIC" != "${META_METRIC#*,}" ]; then
+			case "$SORT" in
+			"") usage "missing -k argument" ;; # NOTREACHED
+			"${META_METRIC%%,*}"|"${META_METRIC#*,}") : ok ;;
+			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+			*) die "-k col must be one of: total %s %s" \
+				"${META_METRIC%%,*}" "${META_METRIC#*,}"
+			esac
+		else
+			case "$SORT" in
+			"") usage "missing -k argument" ;; # NOTREACHED
+			"$META_METRIC") : ok ;; # METRIC
+			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+			*) die "-k col must be one of: total $META_METRIC"
 			esac
 		fi
 	elif [ "$VIEW_SERVER" ]; then
@@ -353,7 +601,7 @@ elif [ "$MODE" = meta ]; then
 			[Bb][Ss][Yy]) SORT=bsy ;; # BSY
 			*) die "-k col must be one of: total reqs bsy"
 			esac
-		else
+		elif [ "$META_METRIC" = qlen ]; then
 			case "$SORT" in
 			"") usage "missing -k argument" ;; # NOTREACHED
 			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
@@ -361,6 +609,18 @@ elif [ "$MODE" = meta ]; then
 			[Qq][Ll][Ee][Nn]) SORT=qlen ;; # QLEN
 			*) die "-k col must be one of: total reqs qlen"
 			esac
+		elif [ "$META_METRIC" != "${META_METRIC#*,}" ]; then
+			case "$SORT" in
+			"") usage "missing -k argument" ;; # NOTREACHED
+			"${META_METRIC%%,*}"|"${META_METRIC#*,}") : ok ;;
+			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL
+			*) die "-k col must be one of: total %s %s" \
+				"${META_METRIC%%,*}" "${META_METRIC#*,}"
+			esac
+		else
+			# NOTREACHED
+			die "-M metric value unsupported \`%s'" \
+				"$META_METRIC"
 		fi
 	fi
 fi
@@ -423,6 +683,7 @@ esac
 } | awk -v color=${COLOR:-0} \
 	-v cols=$cols \
 	-v cons=${CONS:-0} \
+	-v data_metric="$DATA_METRIC" \
 	-v data_mode=${MODE_DATA:-0} \
 	-v debugger=${DEBUGGER:-0} \
 	-v interval=$INTERVAL \
@@ -449,6 +710,11 @@ esac
 	BEGIN {
 		debug2("Terminal size (rows, cols) = (%d, %d)", rows, cols)
 		debug1("Sorting by %s", sort)
+		debug1("Mode is %s", mode)
+		if (data_mode)
+			debug1("Data metric is %s", data_metric)
+		else
+			debug1("Meta metric is %s", meta_metric)
 
 		exit_status = 0 # SUCCESS
 		time_delta = 0 # Calculated
@@ -536,44 +802,127 @@ esac
 		delete uid2name_cache
 
 		#
+		# Aggregation constants
+		#
+
+		agg_str[agg_avg = 1] = "agg_avg"
+		agg_str[agg_sum = 2] = "agg_sum"
+
+		#
 		# ST: VIEWS
 		#
 
 		if (view == "SERVER") {
 			labels["name"] = no_names ? 1 : "NF"
+			if (meta_mode) show_basic = 1 # column widths and units
 		} else {
 			labels["name"] = 1
 		}
 
+		debug1("Basic mode (-b) %s",
+			show_basic ? "enabled" : "disabled")
+
+		type_kib = show_basic ? "kib" : "kib-rate"
+		type_iec = show_basic ? "iec" : "iec-rate"
+		type_num = show_basic ? "num" : "num-rate"
+		type_reg = "num"
+
 		o = 0
-		if (data_mode) {
-			kv_map4("read", "B-rd",
-				"read_bytes", 3, "read_rate")
-			kv_map4("write", "B-wr",
-				"write_bytes", 2, "write_rate")
+		if (data_mode && view == "SERVER") {
+			# NB: field 1 is node ID (unused)
+			kv_map6("write", "<prop-unused2>", "write_bytes", 2,
+				"write_rate", type_kib, agg_sum)
+			kv_map6("read", "<prop-unused3>", "read_bytes", 3,
+				"read_rate", type_kib, agg_sum)
+			kv_map6("reqs", "<prop-unused4>", "reqs", 4,
+				"<rate-unused4>", type_reg, agg_avg)
+			kv_map6("qlen", "<prop-unused5>", "qlen", 5,
+				"<rate-unused5>", type_reg, agg_avg)
+			kv_map6("bsy", "<prop-unused6>", "bsy", 6,
+				"<rate-unused6>", type_reg, agg_avg)
 
 			lorder[++o] = "read"
 			lorder[++o] = "write"
+			# Alphabetical beyond this point
+			lorder[++o] = "bsy"
+			lorder[++o] = "qlen"
+			lorder[++o] = "reqs"
+
 			kv_ord(o, lorder)
 
-			label_map(1, "read", "READ(OUT)")
-			label_map(2, "write", "WRITE(IN)")
+			if (match(data_metric, /,/)) {
+				label_map(1, substr(data_metric, 1, RSTART-1))
+				label_map(2, substr(data_metric, RSTART+1))
+			} else if (data_metric == "rw") {
+				label_map(1, "read", "READ(OUT)")
+				label_map(2, "write", "WRITE(IN)")
+			} else {
+				label_map(1, data_metric)
+				label_map(2, "reqs")
+			}
 
-			labels["combined_rate"] = "total_rate"
-			labels["combined_total"] = "total_bytes"
+			labels["combined_rate"] = "rw_rate"
+			labels["combined_total"] = "rw_bytes"
+		} else if (data_mode) { # for USER/CLIENT
+			kv_map6("read", "B-rd", "read_bytes", unused1,
+				"read_rate", type_iec, agg_sum)
+			kv_map6("write", "B-wr", "write_bytes", unused2,
+				"write_rate", type_iec, agg_sum)
+
+			lorder[++o] = "read"
+			lorder[++o] = "write"
+			# Alphabetical beyond this point
+			lorder[++o] = "ack"
+			lorder[++o] = "close"
+			lorder[++o] = "getFSize"
+			lorder[++o] = "hrtbeat"
+			lorder[++o] = "nodeInf"
+			lorder[++o] = "ops-rd"
+			lorder[++o] = "ops-wr"
+			lorder[++o] = "sAttr"
+			lorder[++o] = "sChDrct"
+			lorder[++o] = "statfs"
+			lorder[++o] = "storInf"
+			lorder[++o] = "sum"
+			lorder[++o] = "trunc"
+			lorder[++o] = "unlnk"
+
+			kv_ord(o, lorder)
+
+			for (n = 3; n <= o; n++)
+				kv_map(lorder[n])
+
+			if (match(data_metric, /,/)) {
+				label_map(1, substr(data_metric, 1, RSTART-1))
+				label_map(2, substr(data_metric, RSTART+1))
+			} else if (data_metric == "rw") {
+				label_map(1, "read", "READ(OUT)")
+				label_map(2, "write", "WRITE(IN)")
+			} else {
+				label_map(1, data_metric)
+			}
+
+			labels["combined_rate"] = "rw_rate"
+			labels["combined_total"] = "rw_bytes"
 		} else if (meta_mode && view == "SERVER") {
-			kv_map("reqs", 2)
-			kv_map("qlen", 3)
-			kv_map("bsy", 4)
+			# NB: field 1 is node ID (unused)
+			kv_map4("reqs", 2, type_reg, agg_avg)
+			kv_map4("qlen", 3, type_reg, agg_avg)
+			kv_map4("bsy", 4, type_reg, agg_avg)
 
 			lorder[++o] = "reqs"
 			lorder[++o] = "qlen"
 			lorder[++o] = "bsy"
 			kv_ord(o, lorder)
 
-			label_map(1, meta_metric)
-			label_map(2, "reqs")
-		} else {
+			if (match(meta_metric, /,/)) {
+				label_map(1, substr(meta_metric, 1, RSTART-1))
+				label_map(2, substr(meta_metric, RSTART+1))
+			} else {
+				label_map(1, meta_metric)
+				label_map(2, "reqs")
+			}
+		} else { # meta_mode for USER/CLIENT
 			lorder[++o] = "stat"
 			lorder[++o] = "statLI"
 			lorder[++o] = "create"
@@ -582,6 +931,25 @@ esac
 			lorder[++o] = "unlnk"
 			lorder[++o] = "open"
 			lorder[++o] = "close"
+			# Alphabetical beyond this point
+			lorder[++o] = "ack"
+			lorder[++o] = "dirparent"
+			lorder[++o] = "entInf"
+			lorder[++o] = "getXA"
+			lorder[++o] = "hardlnk"
+			lorder[++o] = "mdsInf"
+			lorder[++o] = "mirror"
+			lorder[++o] = "mkdir"
+			lorder[++o] = "nodeInf"
+			lorder[++o] = "rddir"
+			lorder[++o] = "ren"
+			lorder[++o] = "revalLI"
+			lorder[++o] = "sAttr"
+			lorder[++o] = "sChDrct"
+			lorder[++o] = "statfs"
+			lorder[++o] = "sum"
+			lorder[++o] = "trunc"
+
 			kv_ord(o, lorder)
 
 			for (n = 1; n <= o; n++)
@@ -599,6 +967,11 @@ esac
 			} else if (meta_metric == "fd") {
 				label_map(1, "close")
 				label_map(2, "open")
+			} else if (match(meta_metric, /,/)) {
+				label_map(1, substr(meta_metric, 1, RSTART-1))
+				label_map(2, substr(meta_metric, RSTART+1))
+			} else {
+				label_map(1, meta_metric)
 			}
 		}
 
@@ -611,6 +984,32 @@ esac
 	#
 	# OS compatibility
 	#
+
+	function _asort(src, dest,        k, nitems, i, val)
+	{
+		k = nitems = 0
+		for (i in src) dest[++nitems] = src[i]
+		for (i = 1; i <= nitems; k = i++) {
+			val = dest[i]
+			while ((k > 0) && (dest[k] > val)) {
+				dest[k+1] = dest[k]; k--
+			}
+			dest[k+1] = val
+		}
+		return nitems
+	}
+
+	function _strftime(fmt, tm,        cmd, tfmt)
+	{
+		if (uname == "Linux") return strftime(fmt, tm)
+		if (tm == _strftime_tm && fmt == _strftime_fmt)
+			return _strftime_dt
+		tfmt = uname == "Linux" ? "-d @%u" : "-r %u"
+		(cmd = sprintf("date " tfmt " +\"%s\"", _strftime_tm = tm,
+			_strftime_fmt = fmt)) | getline _strftime_dt
+		close(cmd)
+		return _strftime_dt
+	}
 
 	function _systime(        cmd, tm) {
 		if (uname == "Linux") return systime()
@@ -626,12 +1025,31 @@ esac
 	function debug1(fmt,a1) { dprint(sprintf(fmt, a1)) }
 	function debug2(fmt,a1,a2) { dprint(sprintf(fmt, a1, a2)) }
 	function debug3(fmt,a1,a2,a3) { dprint(sprintf(fmt, a1, a2, a3)) }
+	function debug4(fmt,a1,a2,a3,a4) {
+		dprint(sprintf(fmt, a1, a2, a3, a4))
+	}
+	function debug5(fmt,a1,a2,a3,a4,a5) {
+		dprint(sprintf(fmt, a1, a2, a3, a4, a5))
+	}
 
 	function dprint(str)
 	{
 		if (debugger == 0) return
 		print str > stderr
 		fflush(stderr)
+	}
+
+	function d3print2(fmt,a1,a2) {
+		if (debugger >= 3) dprint(sprintf(fmt, a1, a2))
+	}
+	function d4print2(fmt,a1,a2) {
+		if (debugger >= 4) dprint(sprintf(fmt, a1, a2))
+	}
+	function d4print3(fmt,a1,a2,a3) {
+		if (debugger >= 4) dprint(sprintf(fmt, a1, a2, a3))
+	}
+	function d4print4(fmt,a1,a2,a3,a4) {
+		if (debugger >= 4) dprint(sprintf(fmt, a1, a2, a3, a4))
 	}
 
 	#
@@ -697,12 +1115,10 @@ esac
 		bar_min1 += vsz_min + 1 # VIEW + space
 		bar_min1 += dsz + 1 # TOTAL + space
 		vsz_cols2 = bar_min1
-		bar_min1 += dsz + 1
-			# WRITE(IN)/STAT/CREATE/RMDIR/OPEN/REQS + space
+		bar_min1 += dsz + 1 # data + space
 		vsz_cols1 = bar_min2 = bar_min1
 		bar_min1 += bar_size_fixed_min + 1 # small bar + space
 		bar_min2 += bar_size_fixed_max + 1 # bigger bar + space
-		# READ(OUT)/STATLI/CREATELI/UNLNK/CLOSE/QLEN/BSY
 		bar_min1 += dsz
 		bar_min2 += dsz
 		vsz_cols1 += dsz
@@ -752,17 +1168,12 @@ esac
 			vsz -= 0 + 1 # %-*s VIEW + space
 			vsz -= dsz # TOTAL
 			if (show_data_columns) {
-				# space +
-				# WRITE(IN)/STAT/CREATE/RMDIR/OPEN/REQS
-				# + space
-				vsz -= 1 + dsz + 1
+				vsz -= 1 + dsz + 1 # space + data + space
 
 				if (bar_size > 0) {
 					vsz -= bar_size + 1 # bar + space
 				}
 				vsz -= dsz
-				# READ(OUT)/STATLI/CREATELI/UNLNK/CLOSE
-				# or QLEN/BSY in server mode (-s)
 			}
 		} else if (show_bar_column) {
 			# Fixed-width
@@ -772,10 +1183,8 @@ esac
 			bar_size = cols
 			bar_size -= vsz + 1 # %[-]*s VIEW + space
 			bar_size -= dsz + 1 # TOTAL + space
-			# WRITE(IN)/STAT/CREATE/RMDIR/OPEN/REQS + space
-			bar_size -= dsz + 1
+			bar_size -= dsz + 1 # data + space
 			bar_size -= 0 + 1 # variable-width bar + space
-			# READ(OUT)/STATLI/CREATELI/UNLNK/CLOSE/QLEN/BSY
 			bar_size -= dsz
 		} else {
 			# Fixed-width
@@ -794,7 +1203,6 @@ esac
 		fmtsz += 1 + vsz
 		fmt = fmt " %" dsz "s" # TOTAL
 		fmtsz += 1 + dsz
-		# WRITE(IN)/STAT/CREATE/RMDIR/OPEN/REQS
 		if (color) {
 			fmt = fmt " " red "%" dsz "s"
 		} else {
@@ -814,11 +1222,9 @@ esac
 				fmt = fmt "|%-*s"
 			}
 			fmtsz += 1 + bar_size + 1 + bar_size
-			# READ(OUT)/STATLI/CREATELI/UNLNK/CLOSE/QLEN/BSY
 			fmt = fmt " %-" dsz "s"
 			fmtsz += 1 + dsz
 		} else if (show_data_columns) {
-			# READ(OUT)/STATLI/CREATELI/UNLNK/CLOSE/QLEN/BSY
 			if (color) {
 				fmt = fmt " " cyan "%" dsz "s"
 			} else {
@@ -852,21 +1258,50 @@ esac
 	#
 
 	function idx(p1, p2) { return (p2 == "" ? p1 : p1 " " p2) }
-	function kv_map(x, field) { kv_map4(x, x, x, field) }
+	function kv_map(x, field) {
+		kv_map6(x, x, x, field, "", type_num, agg_sum)
+	}
+	function kv_map4(x, field, type, agg) {
+		kv_map6(x, x, x, field, "", type, agg)
+	}
 
 	function clear_data()
 	{
 		delete _keys
+		delete key_items
 		delete key_value
 	}
 
-	function kv_map4(x, prop, key, field, rate)
+	function kv_avg(p1, p2, v,        key, bef, n)
+	{
+		if (p1 == "") return
+		key = idx(p1, p2)
+		bef = key_value[key]
+		key_value[key] *= key_items[key]++
+		key_value[key] += v
+		key_value[key] /= (n = key_items[key])
+		if (debugger >= 4 && (v != 0 || show_zero_values)) {
+			debug5("++ key_value[%s] avg changed %s => %s (%s%d)",
+				key, sprintf("%d/%d", bef * (n - 1), n - 1),
+				sprintf("%d/%d", key_value[key] * n, n),
+				v >= 0 ? "+" : "", v)
+		}
+	}
+
+	function kv_map6(x, prop, key, field, rate, type, agg)
 	{
 		json_fields[x]
 		json_field[x] = int(field) # SERVER mode (-s)
 		json_prop[x] = prop == "" ? x : prop
 		json_key[x] = key == "" ? x : key
-		json_rate[x] = rate == "" ? key "_rate" : rate
+		if (data_mode || view != "SERVER") {
+			json_rate[x] = rate == "" ? key "_rate" : rate
+		}
+		data_type[key] = type == "" ? type_num : type
+		data_agg[key] = agg == "" ? agg_sum : agg
+		d4print4("data_type[%s]=[%s] data_agg[%s]=[%s]",
+			key, data_type[key],
+			key, agg_str[data_agg[key]])
 	}
 
 	function kv_ord(nelements, list,        n)
@@ -878,12 +1313,15 @@ esac
 		njson_fields = split(json_field_order, json_field_name)
 	}
 
-	function kv_sum(p1, p2, v)
+	function kv_sum(p1, p2, v,        key, bef)
 	{
-		key_value[idx(p1, p2)] += v
-		if (debugger > 2) {
-			debug3("++ key_value[%s] += %d => %d", idx(p1, p2), v,
-				key_value[idx(p1, p2)])
+		if (p1 == "") return
+		key = idx(p1, p2)
+		bef = key_value[key]
+		key_value[key] += v
+		if (debugger >= 4 && (v != 0 || show_zero_values)) {
+			debug5("++ key_value[%s] sum changed %d => %d (%s%d)",
+				key, bef, key_value[key], v >= 0 ? "+" : "", v)
 		}
 	}
 
@@ -898,7 +1336,9 @@ esac
 		labels["field" n] = json_field[x] # SERVER mode (-s)
 		labels["prop" n] = json_prop[x]
 		labels["key" n] = json_key[x]
-		labels["rate" n] = json_rate[x]
+		if (data_agg[x] != agg_avg) {
+			labels["rate" n] = json_rate[x]
+		}
 	}
 
 	#
@@ -952,18 +1392,6 @@ esac
 		buffer_add(prefix str suffix)
 	}
 
-	function _strftime(fmt, tm,        cmd, tfmt)
-	{
-		if (uname == "Linux") return strftime(fmt, tm)
-		if (tm == _strftime_tm && fmt == _strftime_fmt)
-			return _strftime_dt
-		tfmt = uname == "Linux" ? "-d @%u" : "-r %u"
-		(cmd = sprintf("date " tfmt " +\"%s\"", _strftime_tm = tm,
-			_strftime_fmt = fmt)) | getline _strftime_dt
-		close(cmd)
-		return _strftime_dt
-	}
-
 	function buffer_add_header(        prefix, suffix,
 		presz, n, fmt, dtfmt, dtsz, ifmt, sz, str)
 	{
@@ -975,7 +1403,7 @@ esac
 		sz = cols < fmtsz ? cols : fmtsz
 		for (n = split("|%T|%F %T|%c", fmt, /\|/); n > 0; n--) {
 			dtfmt = fmt[n]
-			dtsz = dtfmt == "" ? 0 : length(strftime(dtfmt, tm))
+			dtsz = dtfmt == "" ? 0 : length(_strftime(dtfmt, tm))
 			if (sz >= presz + 1 + dtsz) break
 		}
 		if (dtfmt == "") {
@@ -1015,6 +1443,7 @@ esac
 
 	function uid2name(uid,        cmd, id, idf, name)
 	{
+		if (uid ~ /:/) return uid
 		if (uid in uid2name_cache)
 			return uid2name_cache[uid]
 		(cmd = sprintf("getent passwd -- %d", uid)) | getline id
@@ -1024,8 +1453,8 @@ esac
 		return uid2name_cache[uid] = name
 	}
 
-	function parse_line(        key, value1, value2, kprop, value,
-		mul, n, f, v)
+	function parse_line(        key, key1, type1, value1, key2, type2,
+		value2, kprop, value, n, f, v)
 	{
 		# ST: CTLDATA
 
@@ -1048,37 +1477,48 @@ esac
 		key = labels["name"] == "NF" ? $NF : $labels["name"]
 
 		# Map UID to name unless disabled (-n)
-		if (view == "USER" && !no_names) {
-			if (debugger > 2) {
-				debug2("Mapped UID %d to \"%s\"",
-					key, uid2name(key))
-			}
+		if (key !~ /:/ && view == "USER" && !no_names) {
+			d3print2("Mapped UID %d to \"%s\"", key, uid2name(key))
 			key = uid2name(key)
 		}
 
+		key1 = labels["key1"]
+		key2 = labels["key2"]
+		type1 = data_type["key1"]
+		type2 = data_type["key2"]
 		value1 = value2 = 0
 		if (view == "SERVER") {
-			if (mode == "data") {
-				mul = 1024 # NB: KiB/s -> B/s
-			} else { # mode == "meta"
-				mul = 1
-			}
+			# NB: Server mode gives no sum, create one
 			if (output_json) {
 				# ST: CTLDATA
-				# NB: Server mode gives no sum, create one
 				for (n = 1; n <= njson_fields; n++) {
 					f = json_field_name[n]
-					v = $json_field[f] * mul
+					v = $json_field[f]
+					if (data_type[f] == type_kib)
+						v *= 1024 # NB: KiB/s -> B/s
 					kv_sum(json_key[f], "Sum:", v)
-					kv_sum(json_key[f], key, v)
+					if (data_agg[f] == agg_avg)
+						kv_avg(json_key[f], key, v)
+					else # agg_sum
+						kv_sum(json_key[f], key, v)
 				}
 			} else {
-				value1 = $labels["field1"] * mul
-				value2 = $labels["field2"] * mul
-				kv_sum(labels["key1"], "Sum:", value1)
-				kv_sum(labels["key2"], "Sum:", value2)
-				kv_sum(labels["key1"], key, value1)
-				kv_sum(labels["key2"], key, value2)
+				value1 = $labels["field1"]
+				if (data_type[key1] == type_kib)
+					value1 *= 1024 # NB: KiB/s -> B/s
+				value2 = $labels["field2"]
+				if (data_type[key2] == type_kib)
+					value2 *= 1024 # NB: KiB/s -> B/s
+				kv_sum(key1, "Sum:", value1)
+				kv_sum(key2, "Sum:", value2)
+				if (data_agg[key1] == agg_avg)
+					kv_avg(key1, key, value1)
+				else
+					kv_sum(key1, key, value1)
+				if (data_agg[key2] == agg_avg)
+					kv_avg(key2, key, value2)
+				else
+					kv_sum(key2, key, value2)
 			}
 		} else {
 			# ST: CTLDATA
@@ -1106,8 +1546,8 @@ esac
 				value1 = int(_props[labels["prop1"]])
 				value2 = int(_props[labels["prop2"]])
 				if (value1 + value2 < 1) return 0
-				kv_sum(labels["key1"], key, value1)
-				kv_sum(labels["key2"], key, value2)
+				kv_sum(key1, key, value1)
+				kv_sum(key2, key, value2)
 			}
 		}
 
@@ -1119,18 +1559,35 @@ esac
 	# Data formatting
 	#
 
-	function humanize(value,
-		raw, n, suffix, suffixes, div, fmt, unit)
+	function humanize(key, value,
+		raw, n, suffix, suffixes, div, fmt, unit,
+		key1, key2, type, type2)
 	{
 		raw = value
-		if (mode == "data") {
+		if (match(key, /\+/)) {
+			type = data_type[key1 = substr(key, 1, RSTART - 1)]
+			type2 = data_type[key2 = substr(key, RSTART + 1)]
+			if (type != type2 && key1 != "" && key2 != "") {
+				d4print4("+ humanize(%s, %s) => %s [%s]", key,
+					raw, "-", sprintf("%s; %s != %s",
+					"type mismatch", type, type2))
+				return "-"
+			}
+		} else {
+			type = data_type[key]
+		}
+		if (type == type_iec || type == type_kib) {
 			div = 1024
 			fmt = "%'"'"'.2f%s%s"
-			unit = show_basic ? "B" : "B/s"
-		} else if (mode == "meta") {
+			unit = type ~ /-rate/ && !in_summary ? "B/s" : "B"
+		} else if (type == type_num) {
 			div = 1000
 			fmt = "%'"'"'.1f%s%s"
-			unit = show_basic ? "" : "/s"
+			unit = type ~ /-rate/ && !in_summary ? "/s" : ""
+		} else { # type_reg
+			div = 1000
+			fmt = "%'"'"'.1f%s%s"
+			unit = ""
 		}
 		n = split(",K,M,G,T,E", suffixes, /,/)
 		for (suffix = 1; suffix <= n; suffix++) {
@@ -1139,21 +1596,11 @@ esac
 		}
 		if (v ~ /\./) sub(/\.?0+$/, "", v)
 		value = sprintf(fmt, value, suffixes[suffix], unit)
-		return value
-	}
 
-	function _asort(src, dest,        k, nitems, i, val)
-	{
-		k = nitems = 0
-		for (i in src) dest[++nitems] = src[i]
-		for (i = 1; i <= nitems; k = i++) {
-			val = dest[i]
-			while ((k > 0) && (dest[k] > val)) {
-				dest[k+1] = dest[k]; k--
-			}
-			dest[k+1] = val
-		}
-		return nitems
+		d4print4("-> humanize(%s, %s) => %s [%s]",
+			key, raw, value, type)
+
+		return value
 	}
 
 	function json_add(json, key, format, value)
@@ -1185,62 +1632,51 @@ esac
 	}
 
 	function process_view(curview,
-		bar1, rate1, total1, dv1,
-		bar2, rate2, total2, dv2,
+		key1, bar1, rate1, total1,
+		key2, bar2, rate2, total2,
 		combined_rate, combined_total,
-		_keys_sorted, x, cred, i, v, r, n, table_rows, f)
+		cred, i, _keys_sorted, n, r, table_rows, v)
 	{
 		time_delta = interval
 		if (time_delta < 1) time_delta = 1 # prevent division-by-0
 		debug1("Time delta is %d seconds", time_delta)
 
-		if (output_json && in_summary) {
-			in_summary = 0
+		if (output_json && in_summary)
 			if (nsamples != 1) return
+
+		key1 = labels["key1"]
+		key2 = labels["key2"]
+		bar1 = bar2 = ""
+		total1 = kv(key1, "Sum:")
+		if (data_agg[key1] == agg_avg) {
+			total1 /= interval
+			rate1 = 0 # UNUSED
+		} else {
+			rate1 = total1 / time_delta
+		}
+		if (key2 != "") {
+			total2 = kv(key2, "Sum:")
+			if (!output_json)
+				combined_total += total2
+			if (data_agg[key2] == agg_avg) {
+				total2 /= interval
+				rate2 = 0 # UNUSED
+			} else {
+				rate2 = total2 / time_delta
+			}
+		}
+		if (data_mode && (output_json || data_metric == "rw")) {
+			combined_total = total1 + total2
+			combined_rate = combined_total / time_delta
 		}
 
-		bar1 = bar2 = ""
-		total1 = kv(labels["key1"], "Sum:")
-		rate1 = total1 / time_delta
-		total2 = kv(labels["key2"], "Sum:")
-		rate2 = total2 / time_delta
-		combined_total = total1 + total2
-		combined_rate = combined_total / time_delta
-
 		if (output_json) {
-			json_out = ""
-			json_out = json_add_uint(json_out, "time", tm)
-			json_out = json_add_str(json_out,
-				"ident", "total_" curview)
-			if (mode == "data") {
-				json_out = json_add_uint(json_out,
-					labels["combined_total"],
-					combined_total)
-				json_out = json_add_float(json_out,
-					labels["combined_rate"], combined_rate)
-			}
-			for (n = 1; n <= njson_fields; n++) {
-				f = json_field_name[n]
-				v = kv(json_key[f], "Sum:")
-				json_out = json_add_uint(json_out,
-					json_key[f], v)
-				json_out = json_add_float(json_out,
-					json_rate[f], v / interval)
-			}
-			buffer_add("{" json_out "}\n")
+			process_view_json(curview,
+				combined_total, combined_rate)
 		} else {
-			# Display values
-			if (show_basic) {
-				dvc = combined_total
-				dv1 = total1
-				dv2 = total2
-			} else {
-				dvc = combined_rate
-				dv1 = rate1
-				dv2 = rate2
-			}
-			buffer_add1("total", humanize(dvc),
-				humanize(dv1), bar1, bar2, humanize(dv2))
+			process_view_cons(curview, combined_total,
+				combined_rate, key1, key2, total1, total2,
+				rate1, rate2)
 		}
 
 		#
@@ -1250,13 +1686,12 @@ esac
 		for (cred in _keys) {
 			if (sort == "total") {
 				v = 0
-				v += kv(labels["key1"], cred)
-				v += kv(labels["key2"], cred)
-				v = int(v) # Pedantic
+				v += kv(key1, cred)
+				v += kv(key2, cred)
 			} else {
-				v = int(kv(sort, cred))
+				v = kv(sort, cred)
 			}
-			_keys[cred] = sprintf("%99d %s", v, cred)
+			_keys[cred] = sprintf("%99.12f %s", v, cred)
 		}
 
 		#
@@ -1266,7 +1701,7 @@ esac
 		n = _asort(_keys, _keys_sorted)
 		table_rows = output_json || !cons ? n : rows - 4
 		for (i = n; i >= 1 && r <= table_rows; i--) {
-			if (debugger > 2) {
+			if (debugger >= 3 && !output_json) {
 				debug2("r=[%d] table_rows=[%d]", r, table_rows)
 			}
 			cred = _keys_sorted[i]
@@ -1278,24 +1713,92 @@ esac
 			color ? noinv nobold fgreset : ""))
 	}
 
+	function process_view_json(curview, combined_total, combined_rate,
+		f, k, n, json_out, v)
+	{
+		json_out = ""
+		json_out = json_add_uint(json_out, "time", tm)
+		json_out = json_add_str(json_out, "ident", "total_" curview)
+		if (data_mode) {
+			json_out = json_add_uint(json_out,
+				labels["combined_total"], combined_total)
+			json_out = json_add_float(json_out,
+				labels["combined_rate"], combined_rate)
+		}
+		for (n = 1; n <= njson_fields; n++) {
+			f = json_field_name[n]
+			v = kv(k = json_key[f], "Sum:")
+			if (!show_zero_values) {
+				if (v == "") continue
+				if (v == 0) continue
+				if (v < 0.000000000001) continue
+			}
+			if (data_agg[k] == agg_avg) {
+				d4print3("!! %s Sum: %s %s", f,
+					sprintf("%d/%d", v, interval),
+					sprintf("(%.2f)", v / interval))
+				json_out = json_add_float(json_out,
+					json_key[f], v / interval)
+			} else {
+				d4print2("!! %s Sum: %s", f, v)
+				json_out = json_add_uint(json_out,
+					json_key[f], v)
+				json_out = json_add_float(json_out,
+					json_rate[f], v / interval)
+			}
+		}
+		buffer_add("{" json_out "}\n")
+	}
+
+	function process_view_cons(curview, combined_total,
+		combined_rate, key1, key2, total1, total2,
+		rate1, rate2,        dv1, dv2, dvc)
+	{
+		if (debugger >= 4 && data_agg[key1] == agg_avg) {
+			debug2("!! %s Sum: %s", key1, sprintf("%d/%d (%.2f)",
+				total1 * interval, interval, total1))
+		} else { # agg_sum
+			d4print2("!! %s Sum: %d", key1, total1)
+		}
+		if (debugger >= 4 && data_agg[key2] == agg_avg) {
+			debug2("!! %s Sum: %s", key2, sprintf("%d/%d (%.2f)",
+				total2 * interval, interval, total2))
+		} else if (key != "") { # agg_sum
+			d4print2("!! %s Sum: %d", key2, total2)
+		}
+
+		# Display values
+		dvc = show_basic ? combined_total : combined_rate
+		dv1 = data_type[key1] ~ /-rate/ ? rate1 : total1
+		dv2 = data_type[key2] ~ /-rate/ ? rate2 : total2
+		buffer_add1("total", humanize(key1 "+" key2, dvc),
+			humanize(key1, dv1), bar1, bar2, humanize(key2, dv2))
+	}
+
 	function process_cred(curview, cred,
 		total1, cred_value1, bar1, bar1_pct, bar1_size, value1_rate,
 		total2, cred_value2, bar2, bar2_pct, bar2_size, value2_rate,
-		cred_total, cred_rate, pch, dv1, dv2, dvc, x, f, v, _cred)
+		cred_total, cred_rate, pch, key1, key2)
 	{
 		if (cred == "Sum:") return 0
 		pch = "="
-		if (debugger > 2) {
+		if ((debugger >= 3 && !output_json) || debugger >= 4) {
 			debug1("-> process_cred(curview = %s, ...)", curview)
 			debug1("+ cred=[%s]", cred)
 		}
 
-		total1 = kv(labels["key1"], "Sum:")
-		total2 = kv(labels["key2"], "Sum:")
-		cred_value1 = kv(labels["key1"], cred)
-		cred_value2 = kv(labels["key2"], cred)
-
-		cred_total = cred_value1 + cred_value2
+		key1 = labels["key1"]
+		key2 = labels["key2"]
+		total1 = kv(key1, "Sum:")
+		if (data_agg[key1] == agg_avg) total1 /= interval
+		cred_value1 = kv(key1, cred)
+		cred_total = cred_value1
+		if (key2 != "") {
+			total2 = kv(key2, "Sum:")
+			if (data_agg[key2] == agg_avg) total2 /= interval
+			cred_value2 = kv(key2, cred)
+			cred_total += cred_value2
+		}
 		cred_rate = cred_total / time_delta
 
 		# Bar 1
@@ -1310,73 +1813,131 @@ esac
 		sub(/.$/, ">", bar1)
 
 		# Bar 2
-		value2_rate = cred_value2 / time_delta
-		if (total2 > 0)
-			bar2_pct = cred_value2 / total2
-		else
-			bar2_pct = 0
-		bar2_size = bar_size * bar2_pct
-		bar2 = sprintf("%*s", bar2_size, "")
-		gsub(/ /, pch, bar2)
-		sub(/^./, "<", bar2)
+		if (key2 != "") {
+			value2_rate = cred_value2 / time_delta
+			if (total2 > 0)
+				bar2_pct = cred_value2 / total2
+			else
+				bar2_pct = 0
+			bar2_size = bar_size * bar2_pct
+			bar2 = sprintf("%*s", bar2_size, "")
+			gsub(/ /, pch, bar2)
+			sub(/^./, "<", bar2)
+		}
 
 		if (output_json) {
-			# ST: JSONDATA
-			if (!show_zero_values) {
-				v = 0
-				for (n = 1; n <= njson_fields; n++) {
-					f = json_field_name[n]
-					v += kv(json_key[f], cred)
-				}
-				if (int(v) == 0) return 0
-			}
-			json_out = ""
-			json_out = json_add_uint(json_out, "time", tm)
-			json_out = json_add_str(json_out, "ident", curview)
-			_cred = cred
-			if (redact && curview == "user") {
-				if (cred !~ unredacted_users)
-					_cred = get_random(length(cred))
-			} else if (redact && curview == "client") {
-				if (cred !~ unredacted_clients)
-					_cred = get_random(length(cred))
-			} else if (redact && curview == "server") {
-				if (cred !~ unredacted_servers)
-					_cred = get_random(length(cred))
-			}
-			json_out = json_add_str(json_out, curview, _cred)
-			if (mode == "data") {
-				json_out = json_add_uint(json_out,
-					labels["combined_total"], cred_total)
-				json_out = json_add_float(json_out,
-					labels["combined_rate"], cred_rate)
-			}
-			for (n = 1; n <= njson_fields; n++) {
-				f = json_field_name[n]
-				v = kv(json_key[f], cred)
-				if (int(v) == 0 && !show_zero_values) continue
-				json_out = json_add_uint(json_out,
-					json_key[f], v)
-				json_out = json_add_float(json_out,
-					json_rate[f], v / interval)
-			}
-			buffer_add("{" json_out "}\n")
+			process_cred_json(curview, cred, cred_total, cred_rate)
 		} else {
-			if (show_basic) {
-				dvc = cred_total
-				dv1 = cred_value1
-				dv2 = cred_value2
-			} else {
-				dvc = cred_rate
-				dv1 = value1_rate
-				dv2 = value2_rate
-			}
-			buffer_add1(cred, humanize(dvc),
-				humanize(dv1), bar1, bar2, humanize(dv2))
-
+			process_cred_cons(curview, cred, cred_total, cred_rate,
+				key1, bar1, bar1_pct, cred_value1, value1_rate,
+				key2, bar2, bar2_pct, cred_value2, value2_rate)
 		}
 
 		return 1
+	}
+
+	function process_cred_json(curview, cred, cred_total, cred_rate,
+		_cred, f, json_out, k, n, t, v)
+	{
+		# ST: JSONDATA
+
+		if (!show_zero_values) {
+			v = 0
+			for (n = 1; n <= njson_fields; n++) {
+				f = json_field_name[n]
+				v += kv(json_key[f], cred)
+			}
+			if (v == 0) return 0
+		}
+
+		json_out = ""
+		json_out = json_add_uint(json_out, "time", tm)
+		json_out = json_add_str(json_out, "ident", curview)
+
+		_cred = cred
+		if (redact && curview == "user") {
+			if (cred !~ unredacted_users)
+				_cred = get_random(length(cred))
+		} else if (redact && curview == "client") {
+			if (cred !~ unredacted_clients)
+				_cred = get_random(length(cred))
+		} else if (redact && curview == "server") {
+			if (cred !~ unredacted_servers)
+				_cred = get_random(length(cred))
+		}
+		json_out = json_add_str(json_out, curview, _cred)
+
+		if (mode == "data") {
+			json_out = json_add_uint(json_out,
+				labels["combined_total"], cred_total)
+			json_out = json_add_float(json_out,
+				labels["combined_rate"], cred_rate)
+		}
+		for (n = 1; n <= njson_fields; n++) {
+			f = json_field_name[n]
+			k = json_key[f]
+			v = kv(k, cred)
+			if (!show_zero_values) {
+				if (v == "") continue
+				if (v == 0) continue
+				if (v < 0.000000000001) continue
+			}
+			t = kv(k, "Sum:")
+			if (data_agg[k] == agg_avg) t /= interval
+			d4print3("!! %s %s: %s", f, cred, v)
+			d4print3("!! %s %s %s", f, cred,
+				sprintf("is %.12f%% of total",
+				t == 0 ? 0 : v * 100 / t))
+			if (data_type[k] ~ /-rate/) {
+				json_out = json_add_uint(json_out, k, v)
+				json_out = json_add_float(json_out,
+					json_rate[f], v / interval)
+			} else {
+				json_out = json_add_float(json_out, k, v)
+			}
+		}
+		buffer_add("{" json_out "}\n")
+	}
+
+	function process_cred_cons(curview, cred, cred_total, cred_rate,
+		key1, bar1, bar1_pct, cred_value1, value1_rate,
+		key2, bar2, bar2_pct, cred_value2, value2_rate,
+		dv1, dv2, dvc, n)
+	{
+		if (debugger >= 4 && (cred_value1 >= 0.000000000001 ||
+			show_zero_values)) {
+			if (data_agg[key1] == agg_avg) {
+				n = key_items[idx(key1, cred)]
+				debug4("!! %s %s: %s (%.2f)", key1, cred,
+					sprintf("%d/%d", cred_value1 * n, n),
+					cred_value1)
+			} else {
+				debug3("!! %s %s %d", key1, cred, cred_value1)
+			}
+			debug3("!! %s %s %s", key1, cred,
+				sprintf("is %.12f%% of total", bar1_pct * 100))
+		}
+		if (debugger >= 4 && key2 != "" &&
+			(cred_value2 > 0.0000000000009 ||
+			show_zero_values)) {
+			if (data_agg[key2] == agg_avg) {
+				n = key_items[idx(key2, cred)]
+				debug4("!! %s %s: %s (%.2f)", key2, cred,
+					sprintf("%d/%d", cred_value2 * n, n),
+					cred_value2)
+			} else {
+				debug3("!! %s %s %d", key2, cred, cred_value2)
+			}
+			debug3("!! %s %s %s", key2, cred,
+				sprintf("is %.12f%% of total", bar2_pct * 100))
+		}
+
+		# Display values
+		dvc = show_basic ? cred_total : cred_rate
+		dv1 = data_type[key1] ~ /-rate/ ? value1_rate : cred_value1
+		dv2 = data_type[key2] ~ /-rate/ ? value2_rate : cred_value2
+		buffer_add1(cred, humanize(key1 "+" key2, dvc),
+			humanize(key1, dv1), bar1, bar2, humanize(key2, dv2))
 	}
 
 	#
@@ -1385,6 +1946,7 @@ esac
 
 	function sample_check()
 	{
+		if (in_summary) in_summary = 0
 		if (nsamples > 0 && --samples_left < 1) {
 			system(sprintf("kill %d > /dev/null 2>&1", bpid))
 			if (more) printf "\n"
@@ -1397,8 +1959,8 @@ esac
 	sub(/^EXIT:/, "") { exit_status = $0; next }
 	NR == 1 && $1 == "spawn" && !(raw_view || debugger) { next }
 
-	raw_view || debugger > 1 {
-		if (debugger) {
+	raw_view || debugger >= 2 {
+		if (debugger > 0) {
 			print > stderr
 			fflush(stderr)
 		} else
