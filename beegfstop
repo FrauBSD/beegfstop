@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-15 15:08:00 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-15 16:58:50 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -568,7 +568,7 @@ elif [ "$MODE" = meta ]; then
 			[Cc][Ll][Oo][Ss][Ee]) SORT=close ;; # CLOSE
 			*) die "-k col must be one of: total open close"
 			esac
-		elif [ "${META_METRIC:-stat}" = "stat" ]; then
+		elif [ "${META_METRIC:-stat}" = stat ]; then
 			case "$SORT" in
 			"") usage "missing -k argument" ;; # NOTREACHED
 			[Tt][Oo][Tt][Aa][Ll]) SORT=total ;; # TOTAL

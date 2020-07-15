@@ -9,7 +9,7 @@ Group: Applications/FrauBSD
 
 Summary: beegfstop
 License: BSD
-Version: 7.0.4
+Version: 8.0
 Release: 1
 Buildarch: noarch
 
@@ -77,6 +77,8 @@ WWW: https://www.fraubsd.org/beegfstop
 
 
 %changelog
+* Fri Jul 15 2020 Devin Teske <dteske@fraubsd.org> 8.0-1
+- 6e1f779 New major version
 * Fri Jul 10 2020 Devin Teske <dteske@fraubsd.org> 7.0.4-1
 - 56d796c Fix handling of negative UIDs [7.0.4]
 * Fri Jul 10 2020 Devin Teske <dteske@fraubsd.org> 7.0.3-1
