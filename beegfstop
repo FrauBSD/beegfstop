@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-15 16:58:50 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-15 21:40:14 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 8.0 $'
+VERSION='$Version: 8.0.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -1454,7 +1454,7 @@ esac
 	}
 
 	function parse_line(        key, key1, type1, value1, key2, type2,
-		value2, kprop, value, n, f, v)
+		value2, kprop, value, n, f, k, v)
 	{
 		# ST: CTLDATA
 
@@ -1493,14 +1493,15 @@ esac
 				# ST: CTLDATA
 				for (n = 1; n <= njson_fields; n++) {
 					f = json_field_name[n]
+					k = json_key[f]
 					v = $json_field[f]
-					if (data_type[f] == type_kib)
+					if (data_type[k] == type_kib)
 						v *= 1024 # NB: KiB/s -> B/s
-					kv_sum(json_key[f], "Sum:", v)
+					kv_sum(k, "Sum:", v)
 					if (data_agg[f] == agg_avg)
-						kv_avg(json_key[f], key, v)
+						kv_avg(k, key, v)
 					else # agg_sum
-						kv_sum(json_key[f], key, v)
+						kv_sum(k, key, v)
 				}
 			} else {
 				value1 = $labels["field1"]
