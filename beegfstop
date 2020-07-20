@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-19 19:39:41 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-19 19:47:32 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 8.1 $'
+VERSION='$Version: 8.1.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -1451,7 +1451,7 @@ esac
 		close(cmd)
 		name = split(id, idf, /:/) < 3 ? uid : idf[1]
 		if (name == "") name = uid
-		else name2uid_cache[name] = uid
+		name2uid_cache[name] = uid
 		return uid2name_cache[uid] = name
 	}
 
@@ -1485,10 +1485,9 @@ esac
 		if (view != "SERVER") $0 = substr($0, length(key) + 1)
 
 		# Map UID to name unless disabled (-n)
-		uid = key
 		if (key !~ /:/ && view == "USER" && !no_names) {
 			d3print2("Mapped UID %d to \"%s\"", key, uid2name(key))
-			key = uid2name(uid = key)
+			key = uid2name(key)
 		}
 
 		key1 = labels["key1"]
@@ -1876,7 +1875,7 @@ esac
 		}
 		json_out = json_add_str(json_out, curview, _cred)
 
-		if (!redact && curview == "user") {
+		if (!redact && curview == "user" && name2uid(cred) != "") {
 			json_out = json_add_str(json_out, "uid",
 				name2uid(cred))
 		}
