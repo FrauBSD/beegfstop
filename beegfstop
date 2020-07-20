@@ -4,7 +4,7 @@
 #
 # $Title: Script to generate top-like statistics for BeeGFS I/O $
 # $Copyright: 2020 Devin Teske. All rights reserved. $
-# $FrauBSD: beegfstop/beegfstop 2020-07-15 21:40:14 -0700 freebsdfrau $
+# $FrauBSD: beegfstop/beegfstop 2020-07-19 19:39:41 -0700 freebsdfrau $
 #
 ############################################################ INFORMATION
 #
@@ -49,7 +49,7 @@ DEFAULT_SORT=total
 
 ############################################################ GLOBALS
 
-VERSION='$Version: 8.0.1 $'
+VERSION='$Version: 8.1 $'
 
 pgm="${0##*/}" # Program basename
 
@@ -799,6 +799,7 @@ esac
 		# Declare arrays
 		delete labels
 		delete lorder
+		delete name2uid_cache
 		delete uid2name_cache
 
 		#
@@ -1450,7 +1451,13 @@ esac
 		close(cmd)
 		name = split(id, idf, /:/) < 3 ? uid : idf[1]
 		if (name == "") name = uid
+		else name2uid_cache[name] = uid
 		return uid2name_cache[uid] = name
+	}
+
+	function name2uid(name)
+	{
+		return name in name2uid_cache ? name2uid_cache[name] : ""
 	}
 
 	function parse_line(        key, key1, type1, value1, key2, type2,
@@ -1475,11 +1482,13 @@ esac
 		#
 
 		key = labels["name"] == "NF" ? $NF : $labels["name"]
+		if (view != "SERVER") $0 = substr($0, length(key) + 1)
 
 		# Map UID to name unless disabled (-n)
+		uid = key
 		if (key !~ /:/ && view == "USER" && !no_names) {
 			d3print2("Mapped UID %d to \"%s\"", key, uid2name(key))
-			key = uid2name(key)
+			key = uid2name(uid = key)
 		}
 
 		key1 = labels["key1"]
@@ -1524,7 +1533,6 @@ esac
 		} else {
 			# ST: CTLDATA
 			delete _props
-			$0 = substr($0, length(key) + 1)
 			while (match($0, /^ *[^ ]+ \[[^\]]+\]/)) {
 				kprop = substr($2, 2, length($2) - 2)
 				value = $1
@@ -1867,6 +1875,11 @@ esac
 				_cred = get_random(length(cred))
 		}
 		json_out = json_add_str(json_out, curview, _cred)
+
+		if (!redact && curview == "user") {
+			json_out = json_add_str(json_out, "uid",
+				name2uid(cred))
+		}
 
 		if (mode == "data") {
 			json_out = json_add_uint(json_out,
